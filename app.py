@@ -98,7 +98,7 @@ st.markdown("""
     .section-label {
         font-size: 11px; font-weight: 700; letter-spacing: 0.05em;
         color: #6750A4; text-transform: uppercase;
-        margin: 20px 4px 8px 4px;
+        margin: 12px 4px 8px 4px; /* Reduced gap */
     }
 
     /* ---- Native File Upload Cards ---- */
@@ -744,8 +744,7 @@ if st.session_state.report_html:
     st.markdown('<div class="section-label">AI TEARDOWN REPORT</div>', unsafe_allow_html=True)
     st.markdown(st.session_state.report_html, unsafe_allow_html=True)
     
-    # --- JADX CODE EXTRACTION ---
-    st.markdown("<div style='margin-top: 24px;'></div>", unsafe_allow_html=True)
+    st.markdown("<div style='height: 16px;'></div>", unsafe_allow_html=True) # Fills the gap cleanly
     if st.button("Extract Java Source Code", use_container_width=True):
         zip_bytes = decompile_apk(st.session_state.new_file_bytes, st.session_state.new_file_name)
         if zip_bytes:
@@ -762,7 +761,7 @@ if st.session_state.report_html:
             use_container_width=True
         )
 
-    st.markdown("<div style='margin-top: 16px;'></div>", unsafe_allow_html=True)
+    st.markdown("<div style='height: 6px;'></div>", unsafe_allow_html=True)
     if st.button("Start New Scan", use_container_width=True):
         st.session_state.report_html = None
         st.session_state.added_image_keys = []
@@ -859,48 +858,48 @@ else:
             new_size_mb = round(new_data["total_size"] / (1024 * 1024), 2)
             size_diff_mb = round(new_size_mb - old_size_mb, 2)
 
-            # Strict slicing to prevent Groq API Payload limits (413 error)
-            combined_diffs = added_native[:20] + added_configs[:20] + added_general[:20] + added_annotations[:15] + added_jni[:15]
-            feature_toggles = [t for t in combined_diffs if any(k in t.lower() for k in ['flag', 'enable', 'config', 'opt', 'toggle', 'experiment', 'beta'])]
+            # INCREASED AI DATA LIMITS (Providing 3-4x more context safely)
+            combined_diffs = added_native[:60] + added_configs[:60] + added_general[:60] + added_annotations[:40] + added_jni[:40]
+            feature_toggles = list(set([t for t in combined_diffs if any(k in t.lower() for k in ['flag', 'enable', 'config', 'opt', 'toggle', 'experiment', 'beta'])]))
 
             diff_summary = f"""
             === PACKAGE META ===
             SIZE CHANGE: {size_diff_mb} MB
             
             === 1. FEATURE TOGGLES & ANNOTATIONS ===
-            FLAGS: {feature_toggles[:15]}
-            ANNOTATIONS: {added_annotations[:10]}
+            FLAGS: {feature_toggles[:40]}
+            ANNOTATIONS: {added_annotations[:30]}
 
             === 2. JNI NATIVE C++ BRIDGES & SYMBOLS ===
-            JNI EXPORTS: {added_jni[:15]}
-            DEMANGLED C++ SYMBOLS: {added_native[:15]}
+            JNI EXPORTS: {added_jni[:30]}
+            DEMANGLED C++ SYMBOLS: {added_native[:30]}
 
             === 3. GRAPHQL, PROTOBUFS & DATABASES ===
-            GRAPHQL QUERIES: {added_graphql[:10]}
-            PROTOBUFS: {added_protobufs[:10]}
-            DB TABLES: {added_dbs[:10]}
+            GRAPHQL QUERIES: {added_graphql[:30]}
+            PROTOBUFS: {added_protobufs[:30]}
+            DB TABLES: {added_dbs[:30]}
 
             === 4. BYTECODE CLASS HIERARCHY DIFFS ===
-            CLASSES: {added_classes[:15]}
+            CLASSES: {added_classes[:40]}
 
             === 5. SERVER ENDPOINTS & DEEP LINKS ===
-            ENDPOINTS: {added_endpoints[:10]}
-            SCHEMES: {added_deep_links[:10]}
+            ENDPOINTS: {added_endpoints[:30]}
+            SCHEMES: {added_deep_links[:30]}
 
             === 6. NEW SCREENS & BACKGROUND SERVICES ===
-            ACTIVITIES: {added_activities[:10]}
-            SERVICES: {added_services[:10]}
-            PERMISSIONS: {added_permissions[:10]}
+            ACTIVITIES: {added_activities[:30]}
+            SERVICES: {added_services[:30]}
+            PERMISSIONS: {added_permissions[:30]}
 
             === 7. THIRD-PARTY SDK ECOSYSTEM ===
             NEW SDKs: {added_sdks}
             REMOVED SDKs: {removed_sdks}
 
             === 8. POTENTIAL EXPOSED SECRETS ===
-            {secrets_found[:10]}
+            {secrets_found[:30]}
 
             === 9. NEW UI-FACING TEXT / LABELS ===
-            {added_ui_strings[:15]}
+            {added_ui_strings[:40]}
             """
 
             scanner_placeholder.markdown("""
@@ -919,6 +918,7 @@ else:
             prompt = f"""
             You are a lead mobile software investigator analyzing an APK diff. Output a clean Material Design 3 HTML dashboard. 
             Do NOT use generic filler text like "The updated package introduces new features and improvements." If a list is empty, state explicitly: "No changes detected." Always explicitly cite the exact class/file names from the provided data.
+            Group similar items together (e.g., 'BetaTab' and 'Beta tab' are the same feature). Do not repeat yourself.
             Output strictly raw HTML (no markdown codeblocks). 
 
             Use the EXACT HTML blocks provided below for the card containers and headers. Do not change the SVG paths or container styles.
