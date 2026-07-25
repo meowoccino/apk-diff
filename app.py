@@ -86,7 +86,13 @@ st.markdown("""
         background: #FFFFFF; border: 1px solid #E7E0EC; border-radius: 20px;
         padding: 16px; margin-top: 4px; margin-bottom: 14px; box-shadow: 0 2px 8px rgba(0,0,0,0.04);
     }
-    .hero-title { font-size: 20px; font-weight: 800; color: #1D1B20; }
+    .hero-title-row { display: flex; align-items: center; gap: 12px; }
+    .icon-badge {
+        background-color: #6750A4; color: #fff; width: 38px; height: 38px;
+        border-radius: 10px; display: flex; align-items: center; justify-content: center;
+        flex-shrink: 0; box-shadow: 0 2px 6px rgba(103,80,164,0.25);
+    }
+    .hero-title { font-size: 20px; font-weight: 800; color: #1D1B20; letter-spacing: -0.01em; }
     .hero-sub { font-size: 13px; color: #49454F; line-height: 1.4; margin-top: 6px; }
     .hero-pillrow { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 10px; }
     .hero-pill { background: #F3EDF7; color: #21005D; font-size: 11px; font-weight: 600; padding: 4px 10px; border-radius: 100px; }
@@ -140,9 +146,21 @@ st.markdown("""
 </style>
 """, unsafe_allow_html=True)
 
+# HERO CARD WITH MAIN ICON
 st.markdown("""
 <div class="hero-card">
-    <div class="hero-title">apk-diff</div>
+    <div class="hero-title-row">
+        <div class="icon-badge">
+            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#FFFFFF" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
+                <polyline points="14 2 14 8 20 8"></polyline>
+                <line x1="16" y1="13" x2="8" y2="13"></line>
+                <line x1="16" y1="17" x2="8" y2="17"></line>
+                <polyline points="10 9 9 9 8 9"></polyline>
+            </svg>
+        </div>
+        <div class="hero-title">apk-diff</div>
+    </div>
     <div class="hero-sub">Diffs two package builds and surfaces JNI exports, GraphQL/ProtoBuf schemas, DEX class changes, databases, split bundles, third-party SDKs, exposed secrets, architectures, locales, and signing metadata.</div>
     <div class="hero-pillrow">
         <span class="hero-pill">JNI / Native</span><span class="hero-pill">SDK Ecosystem</span><span class="hero-pill">Secrets Scan</span><span class="hero-pill">Locales / ABI</span>
@@ -243,6 +261,13 @@ def scan_for_secrets(string_sets):
                     found.add(f"{sec_name}: {item}")
     return found
 
+def detect_architectures(files):
+    archs = set()
+    for f in files:
+        m = re.match(r'^lib/([^/]+)/', f)
+        if m: archs.add(m.group(1))
+    return archs
+
 def process_zip_archive(zip_obj, details):
     for name in zip_obj.namelist():
         info = zip_obj.getinfo(name)
@@ -296,7 +321,7 @@ def inspect_entire_bundle(file_bytes):
     try:
         with zipfile.ZipFile(io.BytesIO(file_bytes), "r") as z: process_zip_archive(z, details)
     except Exception as e: st.error(f"Error reading bundle: {e}")
-    details["architectures"] = {re.match(r'lib/([^/]+)/', f).group(1) for f in details["files"] if re.match(r'lib/([^/]+)/', f)}
+    details["architectures"] = detect_architectures(details["files"])
     details["locales"] = {re.search(r'values-([a-zA-Z]{2}(?:-r[A-Z]{2})?)/', f).group(1) for f in details["files"] if re.search(r'values-([a-zA-Z]{2}(?:-r[A-Z]{2})?)/', f)}
     details["signing_info"] = {f for f in details["files"] if f.lower().startswith("meta-inf/") and f.lower().endswith((".rsa", ".dsa", ".ec"))}
     details["splits"] = {re.search(r'(config\.[a-zA-Z0-9_]+|split_[a-zA-Z0-9_]+)\.apk', f).group(1) for f in details["files"] if re.search(r'(config\.[a-zA-Z0-9_]+|split_[a-zA-Z0-9_]+)\.apk', f)}
@@ -304,7 +329,7 @@ def inspect_entire_bundle(file_bytes):
     details["third_party_sdks"] = {name for name, sigs in SDK_SIGNATURES.items() if any(any(s.lower() in h for h in haystacks) for s in sigs)}
     return details
 
-# ==================== RESTORED FULL QUICK FACTS ====================
+# ==================== FULL QUICK FACTS ====================
 def render_quickfacts(old_data, new_data, added_image_keys, new_data_images):
     old_mb, new_mb = round(old_data["total_size"] / (1024**2), 2), round(new_data["total_size"] / (1024**2), 2)
     new_sdks = new_data["third_party_sdks"] - old_data["third_party_sdks"]
@@ -314,7 +339,7 @@ def render_quickfacts(old_data, new_data, added_image_keys, new_data_images):
     new_splits = new_data["splits"] - old_data["splits"]
     secrets_new = scan_for_secrets([new_data["all_strings"] - old_data["all_strings"], new_data["config_strings"] - old_data["config_strings"]])
 
-    st.markdown('<div class="section-label">QUICK FACTS (NO AI)</div>', unsafe_allow_html=True)
+    st.markdown('<div class="section-label">QUICK FACTS</div>', unsafe_allow_html=True)
     st.markdown(f"""
     <div class="tile-grid">
         <div class="tile"><div class="tile-val">{'+' if new_mb-old_mb >= 0 else ''}{round(new_mb-old_mb, 2)} MB</div><div class="tile-lbl">SIZE CHANGE</div></div>
@@ -326,7 +351,7 @@ def render_quickfacts(old_data, new_data, added_image_keys, new_data_images):
 
     chips = '<div class="chip-row">'
     if not new_archs and not new_locales and not new_splits:
-        chips += '<span class="chip">No new arch / locales / splits</span>'
+        chips += '<span class="chip">No new architectures / locales / splits</span>'
     else:
         for a in sorted(new_archs): chips += f'<span class="chip">New arch: {sanitize(a)}</span>'
         for l in sorted(new_locales)[:5]: chips += f'<span class="chip">New locale: {sanitize(l)}</span>'
@@ -474,8 +499,8 @@ if st.session_state.report_data or st.session_state.hunter_data:
         st.rerun()
 
 else:
-    old_file = st.file_uploader("Old Version (.apk, .aab, .apkm)", type=["apk", "aab", "xapk", "apks", "apkm", "zip"], accept_multiple_files=False)
-    new_file = st.file_uploader("New Version (.apk, .aab, .apkm)", type=["apk", "aab", "xapk", "apks", "apkm", "zip"], accept_multiple_files=False)
+    old_file = st.file_uploader("Old Version (.apk, .aab, .xapk, .apks, .apkm)", type=["apk", "aab", "xapk", "apks", "apkm", "zip"], accept_multiple_files=False)
+    new_file = st.file_uploader("New Version (.apk, .aab, .xapk, .apks, .apkm)", type=["apk", "aab", "xapk", "apks", "apkm", "zip"], accept_multiple_files=False)
     run_standard = st.button("Standard Deep Scan", use_container_width=True)
     st.markdown('<div class="secondary-btn">', unsafe_allow_html=True)
     run_hunter = st.button("Investigative Feature Hunt", use_container_width=True)
@@ -494,7 +519,7 @@ else:
             old_file.seek(0)
             new_file.seek(0)
 
-            # RENDER RADAR ANIMATION IMMEDIATELY
+            # RADAR ANIMATION DISPLAY
             scanner = st.empty()
             scanner.markdown("""
             <div class="scanner-box">
@@ -573,7 +598,6 @@ else:
                 """
 
             try:
-                # LOCKED AT TEMPERATURE 0.0 FOR DETERMINISTIC AI OUTPUT
                 comp = client.chat.completions.create(
                     model="llama-3.1-8b-instant",
                     messages=[{"role": "user", "content": prompt}],
