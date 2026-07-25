@@ -126,18 +126,6 @@ st.markdown("""
     }
     div[data-testid="stFileUploader"] small { display: none !important; }
 
-    .file-badge {
-        background: #EADDFF;
-        color: #21005D;
-        padding: 6px 12px;
-        border-radius: 8px;
-        font-size: 11.5px;
-        font-weight: 700;
-        margin-top: 4px;
-        margin-bottom: 8px;
-        word-break: break-all;
-    }
-
     /* ---- Action Buttons ---- */
     div.stButton > button {
         background: #6750A4 !important;
@@ -699,7 +687,7 @@ def render_quickfacts(old_data, new_data, added_image_keys, new_data_images):
 
     tiles = f"""
     <div class="tile-grid">
-        <div class="tile"><div class="tile-val">{'+' if size_diff >= 0 else ''}{size_diff} MB</div><div class="tile-lbl">SIZE CHANGE ({old_size_mb}→{new_size_mb} MB)</div></div>
+        <div class="tile"><div class="tile-val">{'+' if size_diff >= 0 else ''}{size_diff} MB</div><div class="tile-lbl">SIZE CHANGE</div></div>
         <div class="tile"><div class="tile-val">{len(new_data['files']) - len(old_data['files']):+d}</div><div class="tile-lbl">FILE COUNT CHANGE</div></div>
         <div class="tile"><div class="tile-val">{len(new_sdks)}</div><div class="tile-lbl">NEW 3RD-PARTY SDKS</div></div>
         <div class="tile"><div class="tile-val">{len(new_data['jni_exports'] - old_data['jni_exports'])}</div><div class="tile-lbl">NEW JNI EXPORTS</div></div>
@@ -957,6 +945,21 @@ def render_standard_dashboard(report_data):
     """, unsafe_allow_html=True)
 
 def render_hunter_dashboard(hunter_data):
+    summary_text = sanitize(hunter_data.get("summary", "Analysis complete."))
+    st.markdown(f"""
+    <div class="hunter-card" style="border-left: 4px solid #D0BCFF; margin-bottom: 16px;">
+        <div class="hunter-title">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#D0BCFF" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M12 2v4M12 18v4M4.93 4.93l2.83 2.83M16.24 16.24l2.83 2.83M2 12h4M18 12h4M4.93 19.07l2.83-2.83M16.24 7.76l2.83-2.83"/>
+            </svg>
+            <span>Investigative Summary</span>
+        </div>
+        <div style="font-size: 13.5px; line-height: 1.5; color: #E6E1E5;">
+            {summary_text}
+        </div>
+    </div>
+    """, unsafe_allow_html=True)
+    
     features = hunter_data.get("features", [])
     
     if not features:
@@ -1032,14 +1035,7 @@ if st.session_state.report_data or st.session_state.hunter_data:
 else:
     # SINGLE FILE SELECTION (accept_multiple_files=False)
     old_file = st.file_uploader("Old Version (.apk, .aab, .xapk, .apks, .apkm)", type=["apk", "aab", "xapk", "apks", "apkm", "zip"], accept_multiple_files=False)
-    if old_file:
-        mb_old = round(old_file.size / (1024 * 1024), 2)
-        st.markdown(f'<div class="file-badge">Selected Old: <b>{sanitize(old_file.name)}</b> ({mb_old} MB)</div>', unsafe_allow_html=True)
-
     new_file = st.file_uploader("New Version (.apk, .aab, .xapk, .apks, .apkm)", type=["apk", "aab", "xapk", "apks", "apkm", "zip"], accept_multiple_files=False)
-    if new_file:
-        mb_new = round(new_file.size / (1024 * 1024), 2)
-        st.markdown(f'<div class="file-badge">Selected New: <b>{sanitize(new_file.name)}</b> ({mb_new} MB)</div>', unsafe_allow_html=True)
 
     run_standard = st.button("Standard Deep Scan", use_container_width=True)
     st.markdown('<div class="secondary-btn">', unsafe_allow_html=True)
@@ -1160,6 +1156,7 @@ else:
 
                 JSON Schema required:
                 {{
+                  "summary": "3-4 concise narrative sentences summarizing the overall direction of the unreleased features found.",
                   "features": [
                     {{
                       "name": "Feature Name (e.g. Redact Tool)",
