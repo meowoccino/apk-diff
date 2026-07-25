@@ -1,4 +1,4 @@
-# APK Teardown Studio
+# apk-diff
 
 A web-based, mobile-friendly analysis tool that lets you compare two versions of an Android app and see exactly what changed under the hood. Whether you are looking for unreleased features, new API endpoints, or architectural updates, APK Teardown Studio breaks down complex binary differences into a clean, easy-to-read dashboard directly from your phone browser.
 
