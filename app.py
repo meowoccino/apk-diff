@@ -190,7 +190,7 @@ st.markdown("""
     .tile-val { font-size: 16px; font-weight: 800; color: #21005D; }
     .tile-lbl { font-size: 10px; color: #6F6A76; font-weight: 600; margin-top: 2px; }
 
-    .chip-row { display: flex; gap: 6px; flex-wrap: wrap; margin: 8px 0 18px 0; }
+    .chip-row { display: flex; gap: 6px; flex-wrap: wrap; margin: 8px 0 14px 0; }
     .chip {
         background: #F3EDF7; color: #21005D;
         font-size: 11px; font-weight: 600;
@@ -863,7 +863,8 @@ else:
             new_size_mb = round(new_data["total_size"] / (1024 * 1024), 2)
             size_diff_mb = round(new_size_mb - old_size_mb, 2)
 
-            combined_diffs = added_native[:60] + added_configs[:60] + added_general[:60] + added_annotations[:40] + added_jni[:40]
+            # TUNED FOR 6,000 TPM LIMIT (llama-3.1-8b-instant strict per-minute quota)
+            combined_diffs = added_native[:30] + added_configs[:30] + added_general[:30] + added_annotations[:20] + added_jni[:20]
             feature_toggles = list(set([t for t in combined_diffs if any(k in t.lower() for k in ['flag', 'enable', 'config', 'opt', 'toggle', 'experiment', 'beta'])]))
 
             diff_summary = f"""
@@ -871,39 +872,39 @@ else:
             SIZE CHANGE: {size_diff_mb} MB
             
             === 1. FEATURE TOGGLES & ANNOTATIONS ===
-            FLAGS: {feature_toggles[:40]}
-            ANNOTATIONS: {added_annotations[:30]}
+            FLAGS: {feature_toggles[:25]}
+            ANNOTATIONS: {added_annotations[:15]}
 
             === 2. JNI NATIVE C++ BRIDGES & SYMBOLS ===
-            JNI EXPORTS: {added_jni[:30]}
-            DEMANGLED C++ SYMBOLS: {added_native[:30]}
+            JNI EXPORTS: {added_jni[:15]}
+            DEMANGLED C++ SYMBOLS: {added_native[:15]}
 
             === 3. GRAPHQL, PROTOBUFS & DATABASES ===
-            GRAPHQL QUERIES: {added_graphql[:30]}
-            PROTOBUFS: {added_protobufs[:30]}
-            DB TABLES: {added_dbs[:30]}
+            GRAPHQL QUERIES: {added_graphql[:15]}
+            PROTOBUFS: {added_protobufs[:15]}
+            DB TABLES: {added_dbs[:15]}
 
             === 4. BYTECODE CLASS HIERARCHY DIFFS ===
-            CLASSES: {added_classes[:40]}
+            CLASSES: {added_classes[:20]}
 
             === 5. SERVER ENDPOINTS & DEEP LINKS ===
-            ENDPOINTS: {added_endpoints[:30]}
-            SCHEMES: {added_deep_links[:30]}
+            ENDPOINTS: {added_endpoints[:15]}
+            SCHEMES: {added_deep_links[:15]}
 
             === 6. NEW SCREENS & BACKGROUND SERVICES ===
-            ACTIVITIES: {added_activities[:30]}
-            SERVICES: {added_services[:30]}
-            PERMISSIONS: {added_permissions[:30]}
+            ACTIVITIES: {added_activities[:15]}
+            SERVICES: {added_services[:15]}
+            PERMISSIONS: {added_permissions[:15]}
 
             === 7. THIRD-PARTY SDK ECOSYSTEM ===
             NEW SDKs: {added_sdks}
             REMOVED SDKs: {removed_sdks}
 
             === 8. POTENTIAL EXPOSED SECRETS ===
-            {secrets_found[:30]}
+            {secrets_found[:15]}
 
             === 9. NEW UI-FACING TEXT / LABELS ===
-            {added_ui_strings[:40]}
+            {added_ui_strings[:20]}
             """
 
             scanner_placeholder.markdown("""
@@ -962,7 +963,7 @@ else:
                     model="llama-3.1-8b-instant",
                     messages=[{"role": "user", "content": prompt}],
                     temperature=0.1,
-                    max_tokens=4000,
+                    max_tokens=2500,
                 )
 
                 output_html = completion.choices[0].message.content
