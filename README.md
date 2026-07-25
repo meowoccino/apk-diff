@@ -76,6 +76,10 @@ This app is designed to run smoothly on Streamlit Cloud, making it fully accessi
 
 ---
 
-<p align="center">
-  <i>Built for tech enthusiasts, journalists, and developers looking to keep an eye on app updates.</i>
-</p>
+<div align="center">
+
+**Target Audience**
+  
+*Built for tech enthusiasts, journalists, and developers looking to keep an eye on app updates.*
+
+</div>
