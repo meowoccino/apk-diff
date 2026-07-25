@@ -675,7 +675,7 @@ def render_quickfacts(old_data, new_data, added_image_keys, new_data_images):
 
     tiles = f"""
     <div class="tile-grid">
-        <div class="tile"><div class="tile-val">{'+' if size_diff >= 0 else ''}{size_diff} MB</div><div class="tile-lbl">SIZE CHANGE ({old_size_mb}→{new_size_mb} MB)</div></div>
+        <div class="tile"><div class="tile-val">{'+' if size_diff >= 0 else ''}{size_diff} MB</div><div class="tile-lbl">SIZE CHANGE</div></div>
         <div class="tile"><div class="tile-val">{len(new_data['files']) - len(old_data['files']):+d}</div><div class="tile-lbl">FILE COUNT CHANGE</div></div>
         <div class="tile"><div class="tile-val">{len(new_sdks)}</div><div class="tile-lbl">NEW 3RD-PARTY SDKS</div></div>
         <div class="tile"><div class="tile-val">{len(new_data['jni_exports'] - old_data['jni_exports'])}</div><div class="tile-lbl">NEW JNI EXPORTS</div></div>
@@ -953,7 +953,7 @@ if st.session_state.report_data or st.session_state.hunter_data:
         render_quickfacts(old_q, new_q, st.session_state.added_image_keys, st.session_state.new_data_images)
 
     if st.session_state.scan_mode == "hunter":
-        st.markdown('<div class="section-label" style="color:#D0BCFF;">FEATURE INTEL REPORT</div>', unsafe_allow_html=True)
+        st.markdown('<div class="section-label" style="color:#6750A4;">FEATURE INTEL REPORT</div>', unsafe_allow_html=True)
         render_hunter_dashboard(st.session_state.hunter_data)
     else:
         st.markdown('<div class="section-label">AI TEARDOWN REPORT</div>', unsafe_allow_html=True)
@@ -990,10 +990,10 @@ if st.session_state.report_data or st.session_state.hunter_data:
 
 # ==================== MAIN INPUT VIEW ====================
 else:
-    old_file = st.file_uploader("Old Version (.apk, .aab, .xapk, .apks)", type=["apk", "aab", "xapk", "apks", "zip"])
-    new_file = st.file_uploader("New Version (.apk, .aab, .xapk, .apks)", type=["apk", "aab", "xapk", "apks", "zip"])
+    # UPDATED UPLOADER WITH .APKM
+    old_file = st.file_uploader("Old Version (.apk, .aab, .xapk, .apks, .apkm)", type=["apk", "aab", "xapk", "apks", "apkm", "zip"])
+    new_file = st.file_uploader("New Version (.apk, .aab, .xapk, .apks, .apkm)", type=["apk", "aab", "xapk", "apks", "apkm", "zip"])
 
-    # Stack buttons for mobile (Emojis removed for clean UI)
     run_standard = st.button("Standard Deep Scan", use_container_width=True)
     st.markdown('<div class="secondary-btn">', unsafe_allow_html=True)
     run_hunter = st.button("Investigative Feature Hunt", use_container_width=True)
