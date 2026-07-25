@@ -8,12 +8,22 @@ import ctypes
 import os
 import subprocess
 import urllib.request
+import shutil
+import html
 from collections import defaultdict
 from PIL import Image
 from groq import Groq
 
 # ==================== PAGE SETUP ====================
 st.set_page_config(page_title="APK Teardown Studio", page_icon="⚡", layout="centered")
+
+# ==================== UTILITY: SANITIZE TEXT ====================
+def sanitize(text):
+    """Prevents Streamlit from rendering $ as green LaTeX math or hiding HTML tags."""
+    if not text:
+        return ""
+    # Escape HTML tags first, then escape dollar signs
+    return html.escape(text).replace("$", r"\$")
 
 # ==================== MATERIAL DESIGN 3 — MOBILE-FIRST STYLING ====================
 st.markdown("""
@@ -31,7 +41,7 @@ st.markdown("""
         max-width: 480px !important;
     }
 
-    /* Nuke all Streamlit overlays, including the new Deploy/Manage App button */
+    /* Nuke all Streamlit overlays */
     [data-testid="stHeader"],
     [data-testid="stToolbar"],
     [data-testid="stDecoration"],
@@ -99,9 +109,6 @@ st.markdown("""
         padding: 6px !important;
     }
 
-    /* ---- Checkboxes / toggles row ---- */
-    div[data-testid="stCheckbox"] label p { font-size: 12.5px !important; color: #49454F; }
-
     /* ---- Primary MD3 button ---- */
     div.stButton > button {
         background: #6750A4 !important;
@@ -124,28 +131,29 @@ st.markdown("""
         transform: translateY(-1px) !important;
     }
 
-    /* ---- Scanner / progress card ---- */
+    /* ---- Scanner / progress card (Light Theme) ---- */
     .scanner-box {
-        background: #1D1B20;
-        color: #E6E1E5;
+        background: linear-gradient(135deg, #F3EDF7 0%, #EADDFF 100%);
+        color: #21005D;
         padding: 26px 16px;
         border-radius: 24px;
         text-align: center;
         margin-top: 10px;
         margin-bottom: 16px;
-        border: 1px solid #49454F;
+        border: 1px solid #E7E0EC;
+        box-shadow: 0 4px 12px rgba(103,80,164,0.1);
     }
     .radar-ring {
         width: 42px; height: 42px;
         margin: 0 auto 12px auto;
-        border: 3px solid #D0BCFF;
+        border: 3px solid #6750A4;
         border-top-color: transparent;
         border-radius: 50%;
         animation: spin 1s infinite linear;
     }
     @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
 
-    /* ---- Quick-fact metric tiles (native, non-AI) ---- */
+    /* ---- Quick-fact metric tiles ---- */
     .tile-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-bottom: 10px; }
     .tile {
         background: #F7F2FA;
@@ -198,7 +206,6 @@ def decompile_apk(file_bytes, filename):
     """Runs JADX CLI to decompile the APK to Java source (skipping resources)."""
     setup_jadx()
     
-    # Save bytes to a temp APK file
     apk_path = os.path.join(tempfile.gettempdir(), filename)
     with open(apk_path, "wb") as f:
         f.write(file_bytes)
@@ -206,10 +213,8 @@ def decompile_apk(file_bytes, filename):
     out_dir = os.path.join(tempfile.gettempdir(), f"jadx_out_{filename}")
     
     with st.spinner(f"Running JADX Decompiler on {filename}... (This may take a minute)"):
-        # Run JADX without resources (-r) to save memory/time in cloud
         subprocess.run(["jadx/bin/jadx", "-d", out_dir, "-r", "--show-bad-code", apk_path])
         
-    # Zip the output directory
     zip_path = os.path.join(tempfile.gettempdir(), f"{filename}_source.zip")
     shutil.make_archive(zip_path.replace('.zip', ''), 'zip', out_dir)
     
@@ -365,7 +370,6 @@ def extract_strings_from_bytes(raw_bytes):
     for m in matches:
         try:
             decoded = m.decode('ascii', errors='ignore').strip()
-            # Clean up whitespace and ensure it's not empty
             if len(decoded) < 120 and decoded and not is_framework_noise(decoded):
                 strings.add(decoded)
         except Exception:
@@ -596,7 +600,7 @@ def render_quickfacts(old_data, new_data):
         new_data["native_strings"] - old_data["native_strings"],
     ])
 
-    st.markdown('<div class="section-label">📊 Quick Facts (no AI — instant)</div>', unsafe_allow_html=True)
+    st.markdown('<div class="section-label">QUICK FACTS (NO AI)</div>', unsafe_allow_html=True)
 
     tiles = f"""
     <div class="tile-grid">
@@ -610,48 +614,48 @@ def render_quickfacts(old_data, new_data):
 
     chips = '<div class="chip-row">'
     for a in sorted(new_archs):
-        chips += f'<span class="chip">🏗️ new arch: {a}</span>'
+        chips += f'<span class="chip">New arch: {sanitize(a)}</span>'
     for l in sorted(new_locales)[:8]:
-        chips += f'<span class="chip">🌐 new locale: {l}</span>'
+        chips += f'<span class="chip">New locale: {sanitize(l)}</span>'
     for s in sorted(new_splits):
-        chips += f'<span class="chip">📦 split: {s}</span>'
+        chips += f'<span class="chip">Split: {sanitize(s)}</span>'
     if not new_archs and not new_locales and not new_splits:
-        chips += '<span class="chip">no new architectures / locales / splits</span>'
+        chips += '<span class="chip">No new architectures / locales / splits</span>'
     chips += '</div>'
     st.markdown(chips, unsafe_allow_html=True)
 
     if secrets_new:
-        st.markdown('<div class="chip-row"><span class="chip chip-warn">⚠️ possible exposed secrets found in NEW build</span></div>', unsafe_allow_html=True)
-        with st.expander(f"🔐 Potential exposed secrets ({len(secrets_new)}) — verify manually"):
+        st.markdown('<div class="chip-row"><span class="chip chip-warn">Possible exposed secrets found</span></div>', unsafe_allow_html=True)
+        with st.expander(f"Potential exposed secrets ({len(secrets_new)})"):
             for s in sorted(secrets_new):
-                st.markdown(f'<div class="mono-block">{s}</div>', unsafe_allow_html=True)
+                st.markdown(f'<div class="mono-block">{sanitize(s)}</div>', unsafe_allow_html=True)
     else:
-        st.markdown('<div class="chip-row"><span class="chip chip-ok">✅ no obvious hardcoded secrets pattern-matched</span></div>', unsafe_allow_html=True)
+        st.markdown('<div class="chip-row"><span class="chip chip-ok">No hardcoded secrets matched</span></div>', unsafe_allow_html=True)
 
-    with st.expander("🧩 Third-party SDK ecosystem"):
+    with st.expander("Third-party SDK ecosystem"):
         if new_sdks:
             st.markdown("**Newly added:**")
-            st.markdown('<div class="chip-row">' + "".join(f'<span class="chip chip-ok">{s}</span>' for s in sorted(new_sdks)) + '</div>', unsafe_allow_html=True)
+            st.markdown('<div class="chip-row">' + "".join(f'<span class="chip chip-ok">{sanitize(s)}</span>' for s in sorted(new_sdks)) + '</div>', unsafe_allow_html=True)
         if removed_sdks:
             st.markdown("**Removed:**")
-            st.markdown('<div class="chip-row">' + "".join(f'<span class="chip chip-warn">{s}</span>' for s in sorted(removed_sdks)) + '</div>', unsafe_allow_html=True)
+            st.markdown('<div class="chip-row">' + "".join(f'<span class="chip chip-warn">{sanitize(s)}</span>' for s in sorted(removed_sdks)) + '</div>', unsafe_allow_html=True)
         st.markdown("**All SDKs detected in new build:**")
-        st.markdown('<div class="chip-row">' + "".join(f'<span class="chip">{s}</span>' for s in sorted(new_data["third_party_sdks"])) + '</div>', unsafe_allow_html=True)
+        st.markdown('<div class="chip-row">' + "".join(f'<span class="chip">{sanitize(s)}</span>' for s in sorted(new_data["third_party_sdks"])) + '</div>', unsafe_allow_html=True)
 
-    with st.expander("📦 Size breakdown by category (new build)"):
+    with st.expander("Size breakdown by category (new build)"):
         cats = sorted(new_data["category_sizes"].items(), key=lambda x: -x[1])
         for cat, size in cats:
             mb = round(size / (1024 * 1024), 2)
             if mb > 0.01:
-                st.markdown(f"**{cat}** — {mb} MB")
+                st.markdown(f"**{sanitize(cat)}** — {mb} MB")
 
-    with st.expander("🔏 Signing & packaging metadata"):
+    with st.expander("Signing & packaging metadata"):
         sign_new = new_data["signing_info"]
         if sign_new:
             for s in sorted(sign_new):
-                st.markdown(f"- {s}")
+                st.markdown(f"- {sanitize(s)}")
         else:
-            st.markdown("_No META-INF signature files found in this archive (may be unsigned bundle or AAB)._")
+            st.markdown("_No META-INF signature files found in this archive._")
         if new_data["architectures"]:
             st.markdown(f"**Architectures shipped:** {', '.join(sorted(new_data['architectures']))}")
         if new_data["locales"]:
@@ -659,47 +663,51 @@ def render_quickfacts(old_data, new_data):
 
     added_ui = sorted(new_data["ui_strings"] - old_data["ui_strings"])
     removed_ui = sorted(old_data["ui_strings"] - new_data["ui_strings"])
-    with st.expander(f"🔤 New UI-facing text / labels ({len(added_ui)})"):
-        st.caption("Pulled from resources.arsc's compiled string pool — the real equivalent of strings.xml inside a built APK, filtered to human-readable copy.")
-        if added_ui:
-            for s in added_ui[:250]:
-                if s.strip():
-                    st.markdown(f"- {s}")
-            if len(added_ui) > 250:
-                st.caption(f"…and {len(added_ui) - 250} more (truncated for display).")
+    
+    # Filter empty or whitespace-only strings before counting/displaying
+    added_ui_clean = [s for s in added_ui if s.strip()]
+    removed_ui_clean = [s for s in removed_ui if s.strip()]
+
+    with st.expander(f"New UI-facing text / labels ({len(added_ui_clean)})"):
+        if added_ui_clean:
+            for s in added_ui_clean[:250]:
+                st.markdown(f"- {sanitize(s)}")
+            if len(added_ui_clean) > 250:
+                st.caption(f"…and {len(added_ui_clean) - 250} more (truncated).")
         else:
             st.markdown("_No new UI copy detected between builds._")
-        if removed_ui:
-            st.markdown(f"**Removed ({len(removed_ui)}):**")
-            for s in removed_ui[:100]:
-                if s.strip():
-                    st.markdown(f"- ~~{s}~~")
-            if len(removed_ui) > 100:
-                st.caption(f"…and {len(removed_ui) - 100} more (truncated for display).")
+        
+        if removed_ui_clean:
+            st.markdown(f"**Removed ({len(removed_ui_clean)}):**")
+            for s in removed_ui_clean[:100]:
+                st.markdown(f"- ~~{sanitize(s)}~~")
+            if len(removed_ui_clean) > 100:
+                st.caption(f"…and {len(removed_ui_clean) - 100} more (truncated).")
 
-    with st.expander("🧾 Raw string diff — unfiltered (no AI, everything found)"):
-        st.caption("Every added/removed printable string across code, config, and native files. Use this to verify AI claims yourself.")
+    with st.expander("Raw string diff — unfiltered (no AI)"):
         raw_added = sorted((new_data["all_strings"] | new_data["config_strings"]) - (old_data["all_strings"] | old_data["config_strings"]))
         raw_removed = sorted((old_data["all_strings"] | old_data["config_strings"]) - (new_data["all_strings"] | new_data["config_strings"]))
-        tab_add, tab_rem = st.tabs([f"➕ Added ({len(raw_added)})", f"➖ Removed ({len(raw_removed)})"])
+        
+        raw_added_clean = [s for s in raw_added if s.strip()]
+        raw_removed_clean = [s for s in raw_removed if s.strip()]
+
+        tab_add, tab_rem = st.tabs([f"Added ({len(raw_added_clean)})", f"Removed ({len(raw_removed_clean)})"])
         with tab_add:
-            for s in raw_added[:400]:
-                if s.strip():
-                    st.markdown(f'<div class="mono-block">{s}</div>', unsafe_allow_html=True)
-            if len(raw_added) > 400:
-                st.caption(f"…and {len(raw_added) - 400} more (truncated for display).")
+            for s in raw_added_clean[:400]:
+                st.markdown(f'<div class="mono-block">{sanitize(s)}</div>', unsafe_allow_html=True)
+            if len(raw_added_clean) > 400:
+                st.caption(f"…and {len(raw_added_clean) - 400} more.")
         with tab_rem:
-            for s in raw_removed[:400]:
-                if s.strip():
-                    st.markdown(f'<div class="mono-block">{s}</div>', unsafe_allow_html=True)
-            if len(raw_removed) > 400:
-                st.caption(f"…and {len(raw_removed) - 400} more (truncated for display).")
+            for s in raw_removed_clean[:400]:
+                st.markdown(f'<div class="mono-block">{sanitize(s)}</div>', unsafe_allow_html=True)
+            if len(raw_removed_clean) > 400:
+                st.caption(f"…and {len(raw_removed_clean) - 400} more.")
 
 
 # ==================== FULLSCREEN REPORT VIEW ====================
 if st.session_state.report_html:
     if st.session_state.added_image_keys:
-        with st.expander("🖼️ Newly Added Graphic Previews", expanded=False):
+        with st.expander("Newly Added Graphic Previews", expanded=False):
             img_cols = st.columns(min(len(st.session_state.added_image_keys[:4]), 4))
             for idx, img_key in enumerate(st.session_state.added_image_keys[:4]):
                 with img_cols[idx]:
@@ -713,13 +721,12 @@ if st.session_state.report_html:
         old_q, new_q = st.session_state.quickfacts
         render_quickfacts(old_q, new_q)
 
-    st.markdown('<div class="section-label">🤖 AI Teardown Report</div>', unsafe_allow_html=True)
+    st.markdown('<div class="section-label">AI TEARDOWN REPORT</div>', unsafe_allow_html=True)
     st.markdown(st.session_state.report_html, unsafe_allow_html=True)
     
     # --- JADX DOWNLOAD SECTION ---
-    st.markdown('<div class="section-label">⚙️ Deep Code Extraction</div>', unsafe_allow_html=True)
+    st.markdown('<div class="section-label">DEEP CODE EXTRACTION</div>', unsafe_allow_html=True)
     if st.button("Run JADX Decompiler (Java Source)"):
-        # We process only the new file for JADX to save time
         zip_bytes = decompile_apk(st.session_state.new_file_bytes, st.session_state.new_file_name)
         st.session_state.jadx_zip_bytes = zip_bytes
         st.session_state.jadx_ready = True
@@ -727,7 +734,7 @@ if st.session_state.report_html:
         
     if st.session_state.jadx_ready and st.session_state.jadx_zip_bytes:
         st.download_button(
-            label="📥 Download Decompiled Java Source (.zip)",
+            label="Download Decompiled Java Source (.zip)",
             data=st.session_state.jadx_zip_bytes,
             file_name=f"jadx_source.zip",
             mime="application/zip",
@@ -777,11 +784,9 @@ else:
         elif not old_file or not new_file:
             st.error("Please upload both Old and New package files.")
         else:
-            # Store bytes for JADX later
             st.session_state.new_file_bytes = new_file.read()
             st.session_state.new_file_name = new_file.name
             
-            # Reset file pointer for standard analysis
             old_file.seek(0)
             new_file.seek(0)
             
@@ -790,8 +795,8 @@ else:
             scanner_placeholder.markdown("""
             <div class="scanner-box">
                 <div class="radar-ring"></div>
-                <div style="font-weight: 700; font-size: 15px; color: #D0BCFF;">Decompressing Archives & Native JNI Bridges</div>
-                <div style="font-size: 12px; color: #CAC4D0; margin-top: 4px;">Demangling C++ symbols, mapping GraphQL & ProtoBufs...</div>
+                <div style="font-weight: 700; font-size: 15px; color: #21005D;">Decompressing Archives & Native JNI Bridges</div>
+                <div style="font-size: 12px; color: #49454F; margin-top: 4px;">Demangling C++ symbols, mapping GraphQL & ProtoBufs...</div>
             </div>
             """, unsafe_allow_html=True)
 
@@ -805,8 +810,8 @@ else:
             scanner_placeholder.markdown("""
             <div class="scanner-box">
                 <div class="radar-ring"></div>
-                <div style="font-weight: 700; font-size: 15px; color: #D0BCFF;">Diffing Bytecode, SDKs & Signing Metadata</div>
-                <div style="font-size: 12px; color: #CAC4D0; margin-top: 4px;">Scanning for exposed secrets, ABI splits, locale diffs...</div>
+                <div style="font-weight: 700; font-size: 15px; color: #21005D;">Diffing Bytecode, SDKs & Signing Metadata</div>
+                <div style="font-size: 12px; color: #49454F; margin-top: 4px;">Scanning for exposed secrets, ABI splits, locale diffs...</div>
             </div>
             """, unsafe_allow_html=True)
 
@@ -906,8 +911,8 @@ else:
             scanner_placeholder.markdown("""
             <div class="scanner-box">
                 <div class="radar-ring"></div>
-                <div style="font-weight: 700; font-size: 15px; color: #D0BCFF;">Synthesizing AI Teardown Dashboard</div>
-                <div style="font-size: 12px; color: #CAC4D0; margin-top: 4px;">Formulating unreleased predictions & technical audits...</div>
+                <div style="font-weight: 700; font-size: 15px; color: #21005D;">Synthesizing AI Teardown Dashboard</div>
+                <div style="font-size: 12px; color: #49454F; margin-top: 4px;">Formulating unreleased predictions & technical audits...</div>
             </div>
             """, unsafe_allow_html=True)
 
@@ -923,11 +928,11 @@ else:
 
             - **Card 1 (AI Analysis & Executive Summary)**: `background-color: #F3EDF7; border-radius: 16px; padding: 14px; margin-bottom: 12px; border-left: 4px solid #6750A4;`. Header with SVG sparkle icon + `<span style="font-weight:700;font-size:15px;color:#1D1B20;">AI Analysis & Executive Summary</span>`. 3-5 sentences of plain-language narrative on what actually changed and why it matters.
 
-            - **Card 2 (Unreleased Feature Blueprints)**: `background-color: #FFD8E4; color: #31111D; border-radius: 16px; padding: 14px; margin-bottom: 12px; border-left: 4px solid #B12B58;`. Header with SVG lightning icon + title. Concrete predictions about unreleased features, each backed by cited flag/class/endpoint names — prioritize citing actual human-readable strings from section 11 (NEW UI-FACING TEXT) when available, since those are the strongest signal of what a feature is actually called and does. Include copyable terminal blocks (`background-color:#1D1B20;color:#E6E1E5;padding:8px 12px;border-radius:8px;font-family:monospace;font-size:11px;word-break:break-all;margin-top:6px;`) showing example adb/grep commands to inspect the evidence.
+            - **Card 2 (Unreleased Feature Blueprints)**: `background-color: #FFD8E4; color: #31111D; border-radius: 16px; padding: 14px; margin-bottom: 12px; border-left: 4px solid #B12B58;`. Header with SVG lightning icon + title. Concrete predictions about unreleased features, each backed by cited flag/class/endpoint names. Include copyable terminal blocks (`background-color:#1D1B20;color:#E6E1E5;padding:8px 12px;border-radius:8px;font-family:monospace;font-size:11px;word-break:break-all;margin-top:6px;`) showing example adb/grep commands to inspect the evidence.
 
             - **Card 3 (Exact Package Technical Diffs)**: `background-color: #F7F2FA; border-radius: 16px; padding: 14px; margin-bottom: 12px; border: 1px solid #CAC4D0; border-left: 4px solid #79747E;`. Header with SVG code icon + title. Bullet list of new JNI methods, ProtoBuf schemas, GraphQL queries, endpoints, screens, services, permissions.
 
-            - **Card 4 (Security, SDKs & Packaging Risk)**: `background-color: #FFF3E0; color: #3E2723; border-radius: 16px; padding: 14px; margin-bottom: 12px; border-left: 4px solid #E8A33D;`. Header with SVG shield icon + `<span style="font-weight:700;font-size:15px;color:#3E2723;">Security, SDKs & Packaging Risk</span>`. Cover: newly added/removed third-party SDKs and what data they typically collect, any pattern-matched secrets (flag clearly as "needs manual verification, may be a false positive"), new native architectures / locales / split bundles, and signing metadata observations. If secrets list is empty, state that plainly as a positive finding.
+            - **Card 4 (Security, SDKs & Packaging Risk)**: `background-color: #FFF3E0; color: #3E2723; border-radius: 16px; padding: 14px; margin-bottom: 12px; border-left: 4px solid #E8A33D;`. Header with SVG shield icon + `<span style="font-weight:700;font-size:15px;color:#3E2723;">Security, SDKs & Packaging Risk</span>`. Cover: newly added/removed third-party SDKs and what data they typically collect, any pattern-matched secrets (flag clearly as "needs manual verification, may be a false positive"), new native architectures / locales / split bundles, and signing metadata observations.
 
             RAW CATEGORIZED PACKAGE DIFF DATA:
             {diff_summary}
