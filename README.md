@@ -74,8 +74,4 @@ This app is designed to run smoothly on Streamlit Cloud, making it fully accessi
 * **File Limits:** Streamlit typically limits file uploads to 200MB by default. If you are handling massive files, you may need to adjust your Streamlit config file to allow larger uploads.
 * **JADX Execution:** The app downloads a lightweight, standalone JADX binary on the fly to decompile the code.
 
----
-
-<p align="center">
-  <i>Built for tech enthusiasts, journalists, and developers looking to keep an eye on app updates.</i>
-</p>
+> Built for tech enthusiasts, journalists, and developers looking to keep an eye on app updates.
