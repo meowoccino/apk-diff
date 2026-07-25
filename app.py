@@ -14,7 +14,19 @@ st.set_page_config(page_title="APK Teardown Studio", page_icon="⚡", layout="ce
 # Material Design 3 Styling
 st.markdown("""
 <style>
-    /* Completely hide top header, toolbar, footer, and owner overlay buttons */
+    /* Remove all default padding/margins from Streamlit containers to start strictly at top */
+    html, body, [data-testid="stAppViewContainer"], .main, .block-container {
+        padding-top: 0rem !important;
+        margin-top: 0rem !important;
+    }
+
+    .main .block-container {
+        padding-top: 0.2rem !important;
+        padding-bottom: 2rem !important;
+        max-width: 500px !important;
+    }
+
+    /* Hide top header, toolbar, footer, and developer panels */
     [data-testid="stHeader"], 
     [data-testid="stToolbar"], 
     [data-testid="stDecoration"], 
@@ -25,17 +37,10 @@ st.markdown("""
     .viewerBadge_container__1QSob,
     .styles_viewerBadge__1yB5_ {
         display: none !important;
+        visibility: hidden !important;
         height: 0px !important;
-        margin: 0px !important;
-        padding: 0px !important;
-    }
-
-    /* Force content to start right at the top of mobile screens */
-    .main .block-container {
-        padding-top: 0rem !important;
-        margin-top: 0rem !important;
-        padding-bottom: 2rem !important;
-        max-width: 500px !important;
+        width: 0px !important;
+        opacity: 0 !important;
     }
 
     /* Global Surface Palette */
@@ -45,29 +50,27 @@ st.markdown("""
         font-family: 'Roboto', -apple-system, BlinkMacSystemFont, sans-serif;
     }
 
-    /* Modern Hero Header Container */
+    /* Header Card Component */
     .hero-card {
         background-color: #F3EDF7;
         border: 1px solid #E7E0EC;
         border-radius: 20px;
-        padding: 16px 16px;
+        padding: 14px 16px;
         margin-top: 4px;
         margin-bottom: 12px;
-        box-shadow: 0 1px 4px rgba(0,0,0,0.03);
     }
 
     .hero-title-row {
         display: flex;
         align-items: center;
         gap: 10px;
-        margin-bottom: 4px;
     }
 
     .icon-badge {
         background-color: #EADDFF;
         color: #21005D;
-        width: 38px;
-        height: 38px;
+        width: 36px;
+        height: 36px;
         border-radius: 10px;
         display: flex;
         align-items: center;
@@ -76,7 +79,7 @@ st.markdown("""
     }
 
     .hero-title {
-        font-size: 19px;
+        font-size: 18px;
         font-weight: 700;
         color: #1D1B20;
         line-height: 1.2;
@@ -86,18 +89,18 @@ st.markdown("""
         font-size: 12px;
         color: #49454F;
         line-height: 1.4;
-        margin-top: 2px;
+        margin-top: 4px;
     }
 
-    /* File Uploaders */
+    /* File Upload Slots */
     div[data-testid="stFileUploader"] {
         background-color: #F3EDF7 !important;
         border: 1px dashed #938F99 !important;
         border-radius: 16px !important;
-        padding: 6px !important;
+        padding: 4px !important;
     }
 
-    /* Primary MD3 Button */
+    /* Primary MD3 Buttons */
     div.stButton > button {
         background: #6750A4 !important;
         color: #FFFFFF !important;
@@ -108,7 +111,7 @@ st.markdown("""
         font-weight: 600 !important;
         box-shadow: 0 2px 6px rgba(103, 80, 164, 0.25) !important;
         transition: all 0.2s ease-in-out !important;
-        margin-top: 6px;
+        margin-top: 8px;
     }
 
     div.stButton > button:hover, div.stButton > button:active {
@@ -116,35 +119,36 @@ st.markdown("""
         transform: translateY(-1px) !important;
     }
 
-    /* Scanner Animation Card */
+    /* Futuristic Radar Animation Card */
     .scanner-box {
-        background: linear-gradient(135deg, #21005D 0%, #6750A4 100%);
-        color: #FFFFFF;
-        padding: 20px 16px;
-        border-radius: 20px;
+        background: #1D1B20;
+        color: #E6E1E5;
+        padding: 24px 16px;
+        border-radius: 24px;
         text-align: center;
-        margin-top: 10px;
+        margin-top: 8px;
         margin-bottom: 16px;
+        border: 1px solid #49454F;
     }
 
-    .pulse-ring {
-        width: 36px;
-        height: 36px;
-        margin: 0 auto 10px auto;
-        border: 3px solid #EADDFF;
+    .radar-ring {
+        width: 42px;
+        height: 42px;
+        margin: 0 auto 12px auto;
+        border: 3px solid #D0BCFF;
+        border-top-color: transparent;
         border-radius: 50%;
-        animation: pulse 1.2s infinite ease-in-out;
+        animation: spin 1s infinite linear;
     }
 
-    @keyframes pulse {
-        0% { transform: scale(0.85); opacity: 0.6; }
-        50% { transform: scale(1.1); opacity: 1; }
-        100% { transform: scale(0.85); opacity: 0.6; }
+    @keyframes spin {
+        0% { transform: rotate(0deg); }
+        100% { transform: rotate(360deg); }
     }
 </style>
 """, unsafe_allow_html=True)
 
-# Session state management
+# Session state initialization
 if "report_html" not in st.session_state:
     st.session_state.report_html = None
 if "added_image_keys" not in st.session_state:
@@ -356,20 +360,9 @@ def inspect_entire_bundle(file_bytes):
 
 # ==================== FULLSCREEN REPORT VIEW ====================
 if st.session_state.report_html:
-    col_a, col_b = st.columns([3, 1])
-    with col_a:
-        st.markdown("""
-        <div style="font-size: 19px; font-weight: 700; color: #1D1B20; margin-top: 4px;">Deep Teardown Report</div>
-        """, unsafe_allow_html=True)
-    with col_b:
-        if st.button("↩️ Re-scan", use_container_width=True):
-            st.session_state.report_html = None
-            st.session_state.added_image_keys = []
-            st.session_state.new_data_images = {}
-            st.rerun()
-
+    # 1. Image Previews Dropdown (if present)
     if st.session_state.added_image_keys:
-        with st.expander("View Added Graphic Previews", expanded=False):
+        with st.expander("🖼️ Newly Added Graphic Previews", expanded=False):
             img_cols = st.columns(min(len(st.session_state.added_image_keys[:4]), 4))
             for idx, img_key in enumerate(st.session_state.added_image_keys[:4]):
                 with img_cols[idx]:
@@ -379,16 +372,25 @@ if st.session_state.report_html:
                     except Exception:
                         pass
 
+    # 2. Main HTML Dashboard Cards
     st.markdown(st.session_state.report_html, unsafe_allow_html=True)
+
+    # 3. Re-Scan Button placed cleanly at the very bottom
+    st.markdown("<div style='margin-top: 16px;'></div>", unsafe_allow_html=True)
+    if st.button("🔄 Start New Scan", use_container_width=True):
+        st.session_state.report_html = None
+        st.session_state.added_image_keys = []
+        st.session_state.new_data_images = {}
+        st.rerun()
 
 # ==================== MAIN INPUT VIEW ====================
 else:
-    # Modern Vector Header Component
+    # Modern Header Component
     st.markdown("""
     <div class="hero-card">
         <div class="hero-title-row">
             <div class="icon-badge">
-                <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#21005D" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#21005D" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
                     <rect x="5" y="2" width="14" height="20" rx="3" ry="3"></rect>
                     <line x1="12" y1="18" x2="12.01" y2="18"></line>
                     <path d="M9 6h6"></path>
@@ -416,9 +418,9 @@ else:
             
             scanner_placeholder.markdown("""
             <div class="scanner-box">
-                <div class="pulse-ring"></div>
-                <div style="font-weight: 700; font-size: 15px;">Parsing Archives & Native JNI Bridges...</div>
-                <div style="font-size: 12px; opacity: 0.85; margin-top: 4px;">Demangling C++ symbols, mapping GraphQL queries & ProtoBufs...</div>
+                <div class="radar-ring"></div>
+                <div style="font-weight: 700; font-size: 15px; color: #D0BCFF;">Decompressing Archives & Native JNI Bridges</div>
+                <div style="font-size: 12px; color: #CAC4D0; margin-top: 4px;">Demangling C++ symbols, mapping GraphQL & ProtoBufs...</div>
             </div>
             """, unsafe_allow_html=True)
             
@@ -430,9 +432,9 @@ else:
             
             scanner_placeholder.markdown("""
             <div class="scanner-box">
-                <div class="pulse-ring"></div>
-                <div style="font-weight: 700; font-size: 15px;">Diffing Bytecode Classes & XOR Sweeps...</div>
-                <div style="font-size: 12px; opacity: 0.85; margin-top: 4px;">Correlating unreleased flags, annotations, and database tables...</div>
+                <div class="radar-ring"></div>
+                <div style="font-weight: 700; font-size: 15px; color: #D0BCFF;">Diffing Bytecode Classes & XOR Sweeps</div>
+                <div style="font-size: 12px; color: #CAC4D0; margin-top: 4px;">Correlating unreleased flags, annotations, and database tables...</div>
             </div>
             """, unsafe_allow_html=True)
             
@@ -504,32 +506,32 @@ else:
             
             scanner_placeholder.markdown("""
             <div class="scanner-box">
-                <div class="pulse-ring"></div>
-                <div style="font-weight: 700; font-size: 15px;">Querying Groq AI Engine...</div>
-                <div style="font-size: 12px; opacity: 0.85; margin-top: 4px;">Building Material Design 3 report dashboard...</div>
+                <div class="radar-ring"></div>
+                <div style="font-weight: 700; font-size: 15px; color: #D0BCFF;">Synthesizing AI Teardown Dashboard</div>
+                <div style="font-size: 12px; color: #CAC4D0; margin-top: 4px;">Formulating unreleased predictions & technical audits...</div>
             </div>
             """, unsafe_allow_html=True)
             
             client = Groq(api_key=st.secrets["GROQ_API_KEY"])
             
             prompt = f"""
-            You are a lead tech journalist conducting a complete APK/AAB Teardown.
-            Analyze these package diffs and format your response into a clean, modern Material Design 3 (MD3) dashboard.
-
-            Output strictly raw, clean HTML with inline CSS. Do NOT wrap in markdown codeblocks (do NOT use ```html or ```).
+            You are a lead mobile teardown investigator. Examine these package diffs and output a clean, modern Material Design 3 dashboard report in HTML.
+            Output strictly raw, valid HTML with inline CSS. Do NOT wrap output in markdown codeblocks (do NOT use ```html or ```).
             
-            Styling rules:
-            - Metric Pills Row: flex gap:6px, flex-wrap, margin-bottom:12px. Pills use background `#EADDFF`, text `#21005D`, padding `4px 10px`, border-radius `100px`, font-size `11px`, font-weight `bold`.
-            - AI Summary Card: background-color: #EADDFF; color: #21005D; border-radius: 16px; padding: 14px; margin-bottom: 12px; border-left: 4px solid #6750A4;
-            - Unreleased Blueprint Card: background-color: #FFD8E4; color: #31111D; border-radius: 16px; padding: 14px; margin-bottom: 12px; border-left: 4px solid #B12B58;
-            - Raw Package Changes Card: background-color: #F7F2FA; color: #1D1B20; border-radius: 16px; padding: 14px; margin-bottom: 12px; border: 1px solid #CAC4D0; border-left: 4px solid #79747E;
-            - Terminal / Command Blocks: background-color: #1D1B20; color: #E6E1E5; padding: 8px 12px; border-radius: 8px; font-family: monospace; font-size: 11px; word-break: break-all; margin-top: 6px;
+            Design specifications:
+            - **Top Metric Chips Row**: Render at the very top using `display: flex; gap: 6px; flex-wrap: wrap; margin-bottom: 12px;`. Each pill badge must have `background: #EADDFF; color: #21005D; padding: 4px 10px; border-radius: 100px; font-size: 11px; font-weight: bold;`. Include: Size Change ({size_diff_mb} MB), Impact Rating (e.g. 8/10), New Flags ({len(feature_toggles)}), and Native JNI Bridges ({len(added_jni)}).
 
-            Your report MUST include strictly these 3 cards:
-            1. **Top Metric Chips**: Size Change, Impact Rating (e.g. 9/10), New Flags Count, and Native JNI Bridge Count.
-            2. **Card 1 - AI Analysis & Executive Summary**: A clean synthesis of what feature updates or architectural changes developers are preparing based on the diffs.
-            3. **Card 2 - Unreleased Feature Blueprints**: Specific unreleased feature predictions, accompanied by copyable ADB shell commands in terminal blocks.
-            4. **Card 3 - Exact Package Changes**: Clearly listed raw diffs (JNI methods, ProtoBuf schemas, GraphQL queries, endpoints, classes, services, and permissions) with bullet points so technical diffs are obvious.
+            - **Card 1 (AI Analysis & Executive Summary)**:
+              `background-color: #F3EDF7; border-radius: 16px; padding: 14px; margin-bottom: 12px; border-left: 4px solid #6750A4; border-top: 1px solid #E7E0EC; border-right: 1px solid #E7E0EC; border-bottom: 1px solid #E7E0EC;`
+              Header row MUST include an SVG icon (sparkle/AI icon) followed by `<span style="font-weight: 700; font-size: 15px; color: #1D1B20;">AI Analysis & Executive Summary</span>`. Body text should summarize overall updates in plain language.
+
+            - **Card 2 (Unreleased Feature Blueprints)**:
+              `background-color: #FFD8E4; color: #31111D; border-radius: 16px; padding: 14px; margin-bottom: 12px; border-left: 4px solid #B12B58;`
+              Header row MUST include an SVG icon (lightning/feature icon) followed by `<span style="font-weight: 700; font-size: 15px; color: #31111D;">Unreleased Feature Blueprints</span>`. Detail specific predictions, accompanied by copyable shell commands inside dark terminal blocks (`background-color: #1D1B20; color: #E6E1E5; padding: 8px 12px; border-radius: 8px; font-family: monospace; font-size: 11px; word-break: break-all; margin-top: 6px;`).
+
+            - **Card 3 (Exact Package Technical Diffs)**:
+              `background-color: #F7F2FA; color: #1D1B20; border-radius: 16px; padding: 14px; margin-bottom: 12px; border: 1px solid #CAC4D0; border-left: 4px solid #79747E;`
+              Header row MUST include an SVG icon (code/database icon) followed by `<span style="font-weight: 700; font-size: 15px; color: #1D1B20;">Exact Technical Package Diffs</span>`. Provide bullet points clearly detailing new JNI methods, ProtoBuf schemas, GraphQL queries, endpoints, screens, services, and permissions.
 
             RAW CATEGORIZED PACKAGE DIFF DATA:
             {diff_summary}
@@ -538,7 +540,7 @@ else:
             try:
                 completion = client.chat.completions.create(
                     model="llama-3.3-70b-versatile",
-                    messages=[{"role": "user", "content": prompt}],
+                    messages=[{"role":="user", "content": prompt}],
                     temperature=0.0
                 )
                 
