@@ -1158,7 +1158,7 @@ else:
                 prompt = f"""
                 You are an investigative mobile app software journalist finding hidden features in an APK diff.
                 CRITICAL: Ignore standard Android framework code, existing UI strings, or minor translation updates. Focus STRICTLY on novel, distinctive feature flags, unreleased layout XMLs, and cohesive new workflow strings. If a feature does not have matching evidence across flags and layouts, do not include it.
-                Correlate the provided layouts, UI text, and feature flags to deduce unreleased features.
+                Correlate the provided layouts, UI text, and feature flags to deduce unreleased features. Extract up to 8 distinct unreleased features if supported by evidence.
                 Do NOT include unescaped raw quotes inside JSON values.
                 Respond ONLY in valid JSON format with no markdown wrappers or backticks.
 
