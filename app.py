@@ -9,7 +9,7 @@ from PIL import Image
 from groq import Groq
 
 # Page Setup & Styling
-st.set_page_config(page_title="APK Teardown Studio", page_icon="📱", layout="centered")
+st.set_page_config(page_title="Universal APK Teardown Studio", page_icon="📱", layout="centered")
 
 st.markdown("""
 <style>
@@ -79,7 +79,7 @@ st.markdown("""
 </style>
 """, unsafe_allow_html=True)
 
-# Session state management for Fullscreen Mode
+# Session state management
 if "report_html" not in st.session_state:
     st.session_state.report_html = None
 if "added_image_keys" not in st.session_state:
@@ -98,7 +98,7 @@ def is_framework_noise(token):
     return any(noise in token_lower for noise in NOISE_PATTERNS)
 
 def demangle_cpp_symbol(mangled_str):
-    """Attempts C++ symbol demangling using native C libraries if available."""
+    """Attempts C++ symbol demangling using native C libraries."""
     try:
         for libname in ['libstdc++.so.6', 'libcxxabi.so.1', 'libc.so.6']:
             try:
@@ -164,8 +164,113 @@ def extract_strings_from_bytes(raw_bytes):
             pass
     return strings
 
+def process_zip_archive(zip_obj, details):
+    """Processes any ZIP archive (APK, AAB, or split container)."""
+    for name in zip_obj.namelist():
+        info = zip_obj.getinfo(name)
+        
+        # Handle split APKs nested inside XAPK/APKS archives
+        if name.endswith('.apk') and name != zip_obj.filename:
+            try:
+                sub_apk_bytes = zip_obj.read(name)
+                with zipfile.ZipFile(io.BytesIO(sub_apk_bytes), "r") as sub_z:
+                    process_zip_archive(sub_z, details)
+            except Exception:
+                pass
+            continue
+
+        details["files"].add(name)
+        details["total_size"] += info.file_size
+        
+        if name.endswith('/') or info.file_size == 0:
+            continue
+        
+        lower_name = name.lower()
+        
+        # Image previews
+        if any(lower_name.endswith(ext) for ext in ['.png', '.webp', '.jpg']) and info.file_size < 300 * 1024:
+            if not any(ignore in lower_name for ignore in ["icon", "launcher", "splash"]):
+                try:
+                    details["images"][name.split('/')[-1]] = zip_obj.read(name)
+                except Exception:
+                    pass
+
+        try:
+            raw_bytes = zip_obj.read(name) if info.file_size < 10 * 1024 * 1024 else zip_obj.open(name).read(5 * 1024 * 1024)
+            
+            # SQLite Databases
+            if any(lower_name.endswith(ext) for ext in [".db", ".sqlite"]):
+                db_tables = inspect_sqlite_db(raw_bytes)
+                details["db_schemas"].update(db_tables)
+
+            # ProtoBuf Schemas
+            proto_matches = re.findall(rb'type\.googleapis\.com/[A-Za-z0-9_.-]+', raw_bytes)
+            for pm in proto_matches:
+                details["protobuf_schemas"].add(pm.decode('ascii', errors='ignore'))
+
+            # GraphQL Queries & Mutations
+            graphql_matches = re.findall(rb'(?:query|mutation)\s+[A-Za-z0-9_]+', raw_bytes)
+            for gqm in graphql_matches:
+                details["graphql_ops"].add(gqm.decode('ascii', errors='ignore'))
+
+            # JNI Native Bridge Methods (Java_...)
+            jni_matches = re.findall(rb'Java_[A-Za-z0-9_]+', raw_bytes)
+            for jm in jni_matches:
+                details["jni_exports"].add(jm.decode('ascii', errors='ignore'))
+
+            # Bytecode Class Paths
+            if lower_name.endswith(".dex"):
+                class_matches = re.findall(rb'L[a-zA-Z0-9_$]+/[a-zA-Z0-9_$]+;', raw_bytes)
+                for cm in class_matches[:100]:
+                    decoded_cls = cm.decode('ascii', errors='ignore')
+                    if not is_framework_noise(decoded_cls):
+                        details["class_paths"].add(decoded_cls)
+
+                # DEX Annotations
+                anno_matches = re.findall(rb'(?:SerializedName|Keep|Beta|Experimental|RequiresOptIn)[A-Za-z0-9_"\':\s]{2,60}', raw_bytes)
+                for am in anno_matches:
+                    try:
+                        details["annotations"].add(am.decode('ascii', errors='ignore').strip())
+                    except Exception:
+                        pass
+
+            # XOR Obfuscation Sweep
+            xor_found = check_xor_obfuscation(raw_bytes)
+            details["xor_urls"].update(xor_found)
+
+            file_tokens = extract_strings_from_bytes(raw_bytes)
+            
+            # C++ Demangled Symbols
+            if lower_name.endswith(".so"):
+                for token in file_tokens:
+                    if token.startswith("_Z"):
+                        demangled = demangle_cpp_symbol(token)
+                        details["native_strings"].add(demangled)
+                    else:
+                        details["native_strings"].add(token)
+            elif any(lower_name.endswith(ext) for ext in [".csv", ".json", ".proto", ".txt", ".dat", ".xml", ".properties"]):
+                details["config_strings"].update(file_tokens)
+            else:
+                details["all_strings"].update(file_tokens)
+
+            # Categorize Android components
+            for token in file_tokens:
+                token_lower = token.lower()
+                if "permission." in token_lower:
+                    details["permissions"].add(token)
+                elif "activity" in token_lower or "screen" in token_lower:
+                    details["activities"].add(token)
+                elif "service" in token_lower or "receiver" in token_lower:
+                    details["services"].add(token)
+                elif token_lower.startswith("http://") or token_lower.startswith("https://"):
+                    details["endpoints"].add(token)
+                elif "scheme://" in token_lower or "://" in token_lower:
+                    details["deep_links"].add(token)
+        except Exception:
+            pass
+
 def inspect_entire_bundle(file_bytes):
-    """Deep scans package files including databases, annotations, ProtoBufs, C++ symbols, and XOR sweeps."""
+    """Master entry point for processing APKs, AABs, XAPKs, APKS, and ZIPs."""
     details = {
         "files": set(),
         "total_size": 0,
@@ -174,6 +279,9 @@ def inspect_entire_bundle(file_bytes):
         "config_strings": set(),
         "annotations": set(),
         "protobuf_schemas": set(),
+        "graphql_ops": set(),
+        "jni_exports": set(),
+        "class_paths": set(),
         "db_schemas": set(),
         "xor_urls": set(),
         "activities": set(),
@@ -186,83 +294,9 @@ def inspect_entire_bundle(file_bytes):
     
     try:
         with zipfile.ZipFile(io.BytesIO(file_bytes), "r") as z:
-            for name in z.namelist():
-                info = z.getinfo(name)
-                details["files"].add(name)
-                details["total_size"] += info.file_size
-                
-                if name.endswith('/') or info.file_size == 0:
-                    continue
-                
-                lower_name = name.lower()
-                
-                # Image asset capture
-                if any(lower_name.endswith(ext) for ext in ['.png', '.webp', '.jpg']) and info.file_size < 300 * 1024:
-                    if not any(ignore in lower_name for ignore in ["icon", "launcher", "splash"]):
-                        try:
-                            details["images"][name.split('/')[-1]] = z.read(name)
-                        except Exception:
-                            pass
-
-                try:
-                    raw_bytes = z.read(name) if info.file_size < 10 * 1024 * 1024 else z.open(name).read(5 * 1024 * 1024)
-                    
-                    # 1. SQLite Database Scan
-                    if any(lower_name.endswith(ext) for ext in [".db", ".sqlite"]):
-                        db_tables = inspect_sqlite_db(raw_bytes)
-                        details["db_schemas"].update(db_tables)
-
-                    # 2. ProtoBuf Schema Extraction
-                    proto_matches = re.findall(rb'type\.googleapis\.com/[A-Za-z0-9_.-]+', raw_bytes)
-                    for pm in proto_matches:
-                        details["protobuf_schemas"].add(pm.decode('ascii', errors='ignore'))
-
-                    # 3. XOR Obfuscated Endpoint Sweep
-                    xor_found = check_xor_obfuscation(raw_bytes)
-                    details["xor_urls"].update(xor_found)
-
-                    file_tokens = extract_strings_from_bytes(raw_bytes)
-                    
-                    # 4. Native C++ Symbol Extraction & Demangling
-                    if lower_name.endswith(".so"):
-                        for token in file_tokens:
-                            if token.startswith("_Z"):
-                                demangled = demangle_cpp_symbol(token)
-                                details["native_strings"].add(demangled)
-                            else:
-                                details["native_strings"].add(token)
-                    elif any(lower_name.endswith(ext) for ext in [".csv", ".json", ".proto", ".txt", ".dat", ".xml", ".properties"]):
-                        details["config_strings"].update(file_tokens)
-                    else:
-                        details["all_strings"].update(file_tokens)
-                        
-                    # 5. DEX Annotation & Model Mining
-                    if lower_name.endswith(".dex"):
-                        anno_matches = re.findall(rb'(?:SerializedName|Keep|Beta|Experimental|RequiresOptIn)[A-Za-z0-9_"\':\s]{2,60}', raw_bytes)
-                        for am in anno_matches:
-                            try:
-                                details["annotations"].add(am.decode('ascii', errors='ignore').strip())
-                            except Exception:
-                                pass
-
-                    # Categorize Android components
-                    for token in file_tokens:
-                        token_lower = token.lower()
-                        if "permission." in token_lower:
-                            details["permissions"].add(token)
-                        elif "activity" in token_lower or "screen" in token_lower:
-                            details["activities"].add(token)
-                        elif "service" in token_lower or "receiver" in token_lower:
-                            details["services"].add(token)
-                        elif token_lower.startswith("http://") or token_lower.startswith("https://"):
-                            details["endpoints"].add(token)
-                        elif "scheme://" in token_lower or "://" in token_lower:
-                            details["deep_links"].add(token)
-                except Exception:
-                    pass
-                    
+            process_zip_archive(z, details)
     except Exception as e:
-        st.error(f"Error scanning package: {e}")
+        st.error(f"Error reading package bundle: {e}")
         
     return details
 
@@ -292,7 +326,20 @@ if st.session_state.report_html:
     st.markdown(st.session_state.report_html, unsafe_allow_html=True)
     
     st.markdown("---")
-    st.subheader("📋 One-Tap Text Export")
+    
+    # Exporter Controls
+    col_exp1, col_exp2 = st.columns(2)
+    with col_exp1:
+        st.download_button(
+            label="📥 Download HTML Report",
+            data=st.session_state.report_html,
+            file_name="apk_teardown_report.html",
+            mime="text/html",
+            use_container_width=True
+        )
+    with col_exp2:
+        st.subheader("📋 One-Tap Text Copy")
+        
     st.text_area(
         "Copy raw text below for Telegram, Reddit, or forum posts:", 
         value=re.sub('<[^<]+?>', '', st.session_state.report_html), 
@@ -302,7 +349,7 @@ if st.session_state.report_html:
 # ==================== MAIN INPUT VIEW ====================
 else:
     st.markdown('<div class="title-text">📱 Universal Deep APK Teardown</div>', unsafe_allow_html=True)
-    st.markdown('<div class="sub-text">Deep-scans C++ demangled symbols, ProtoBufs, annotations, databases, and XOR secrets.</div>', unsafe_allow_html=True)
+    st.markdown('<div class="sub-text">Scans C++ JNI exports, GraphQL, ProtoBufs, DEX class diffs, databases, and split bundles.</div>', unsafe_allow_html=True)
 
     custom_keywords = st.text_input(
         "🎯 Custom Search / Keyword Hunt (Optional):", 
@@ -311,11 +358,11 @@ else:
 
     col1, col2 = st.columns(2)
     with col1:
-        old_file = st.file_uploader("Old Version (.apk / .aab)", type=["apk", "aab"])
+        old_file = st.file_uploader("Old Version (.apk, .aab, .xapk, .apks)", type=["apk", "aab", "xapk", "apks", "zip"])
     with col2:
-        new_file = st.file_uploader("New Version (.apk / .aab)", type=["apk", "aab"])
+        new_file = st.file_uploader("New Version (.apk, .aab, .xapk, .apks)", type=["apk", "aab", "xapk", "apks", "zip"])
 
-    if st.button("🚀 Run Deep Package Teardown", type="primary", use_container_width=True):
+    if st.button("🚀 Run Maximum Deep Package Teardown", type="primary", use_container_width=True):
         if "GROQ_API_KEY" not in st.secrets or not st.secrets["GROQ_API_KEY"]:
             st.error("GROQ_API_KEY is missing from Streamlit Secrets!")
         elif not old_file or not new_file:
@@ -327,8 +374,8 @@ else:
             scanner_placeholder.markdown("""
             <div class="scanner-box">
                 <div class="pulse-ring"></div>
-                <div style="font-weight: bold; font-size: 15px;">Scanning Package Archives & Native C++ Symbols...</div>
-                <div style="font-size: 12px; opacity: 0.8; margin-top: 4px;">Demangling C++ libraries, parsing SQLite databases & ProtoBufs...</div>
+                <div style="font-weight: bold; font-size: 15px;">Parsing Archives & Native JNI Bridges...</div>
+                <div style="font-size: 12px; opacity: 0.8; margin-top: 4px;">Demangling C++ symbols, mapping GraphQL queries & ProtoBufs...</div>
             </div>
             """, unsafe_allow_html=True)
             
@@ -342,8 +389,8 @@ else:
             scanner_placeholder.markdown("""
             <div class="scanner-box">
                 <div class="pulse-ring"></div>
-                <div style="font-weight: bold; font-size: 15px;">Decoding Annotations & XOR Sweeps...</div>
-                <div style="font-size: 12px; opacity: 0.8; margin-top: 4px;">Correlating unreleased flags, model annotations, and endpoints...</div>
+                <div style="font-weight: bold; font-size: 15px;">Diffing Bytecode Classes & XOR Sweeps...</div>
+                <div style="font-size: 12px; opacity: 0.8; margin-top: 4px;">Correlating unreleased flags, annotations, and database tables...</div>
             </div>
             """, unsafe_allow_html=True)
             
@@ -357,6 +404,9 @@ else:
             
             added_annotations = list(new_data["annotations"] - old_data["annotations"])
             added_protobufs = list(new_data["protobuf_schemas"] - old_data["protobuf_schemas"])
+            added_graphql = list(new_data["graphql_ops"] - old_data["graphql_ops"])
+            added_jni = list(new_data["jni_exports"] - old_data["jni_exports"])
+            added_classes = list(new_data["class_paths"] - old_data["class_paths"])
             added_dbs = list(new_data["db_schemas"] - old_data["db_schemas"])
             added_xor = list(new_data["xor_urls"] - old_data["xor_urls"])
             
@@ -373,7 +423,7 @@ else:
             new_size_mb = round(new_data["total_size"] / (1024 * 1024), 2)
             size_diff_mb = round(new_size_mb - old_size_mb, 2)
             
-            combined_diffs = added_native + added_configs + added_general + added_annotations
+            combined_diffs = added_native + added_configs + added_general + added_annotations + added_jni
             
             target_matches = []
             if custom_keywords.strip():
@@ -389,29 +439,33 @@ else:
             === 1. TARGET KEYWORD MATCHES ({len(target_matches)}) ===
             {target_matches[:30]}
             
-            === 2. FEATURE TOGGLES & DEX ANNOTATIONS ===
-            FLAGS ({len(feature_toggles)}): {feature_toggles[:35]}
-            ANNOTATIONS ({len(added_annotations)}): {added_annotations[:25]}
+            === 2. FEATURE TOGGLES & ANNOTATIONS ===
+            FLAGS ({len(feature_toggles)}): {feature_toggles[:30]}
+            ANNOTATIONS ({len(added_annotations)}): {added_annotations[:20]}
             
-            === 3. DEMANGLED NATIVE C++ BINARY SYMBOLS (.so) ({len(added_native)}) ===
-            {added_native[:35]}
+            === 3. JNI NATIVE C++ BRIDGES & SYMBOLS ===
+            JNI EXPORTS ({len(added_jni)}): {added_jni[:25]}
+            DEMANGLED C++ SYMBOLS ({len(added_native)}): {added_native[:30]}
             
-            === 4. PROTOBUF SCHEMAS & DATABASE TABLES ===
+            === 4. GRAPHQL, PROTOBUFS & DATABASES ===
+            GRAPHQL QUERIES ({len(added_graphql)}): {added_graphql[:20]}
             PROTOBUFS ({len(added_protobufs)}): {added_protobufs[:20]}
-            DB TABLES ({len(added_dbs)}): {added_dbs[:20]}
+            DB TABLES ({len(added_dbs)}): {added_dbs[:15]}
             
-            === 5. SERVER ENDPOINTS & DEEP LINKS ===
+            === 5. BYTECODE CLASS HIERARCHY DIFFS ({len(added_classes)}) ===
+            {added_classes[:30]}
+            
+            === 6. SERVER ENDPOINTS & DEEP LINKS ===
             ENDPOINTS ({len(added_endpoints)}): {added_endpoints[:20]}
             XOR DECODED ENDPOINTS ({len(added_xor)}): {added_xor[:15]}
             SCHEMES ({len(added_deep_links)}): {added_deep_links[:20]}
             
-            === 6. NEW SCREENS & BACKGROUND SERVICES ===
+            === 7. NEW SCREENS & BACKGROUND SERVICES ===
             ACTIVITIES ({len(added_activities)}): {added_activities[:20]}
             SERVICES ({len(added_services)}): {added_services[:20]}
             PERMISSIONS ({len(added_permissions)}): {added_permissions[:15]}
             
-            === 7. GAME CONFIGS & FILE PATH DIFFS ===
-            CONFIGS ({len(added_configs)}): {added_configs[:30]}
+            === 8. FILE PATH DIFFS ===
             ADDED FILES ({len(added_files)}): {added_files[:20]}
             REMOVED FILES ({len(removed_files)}): {removed_files[:20]}
             """
@@ -421,15 +475,15 @@ else:
             <div class="scanner-box">
                 <div class="pulse-ring"></div>
                 <div style="font-weight: bold; font-size: 15px;">Querying Groq AI Engine...</div>
-                <div style="font-size: 12px; opacity: 0.8; margin-top: 4px;">Building Material Design 3 report dashboard...</div>
+                <div style="font-size: 12px; opacity: 0.8; margin-top: 4px;">Generating Material Design 3 dashboard...</div>
             </div>
             """, unsafe_allow_html=True)
             
             client = Groq(api_key=st.secrets["GROQ_API_KEY"])
             
             prompt = f"""
-            You are a lead tech journalist and mobile software investigator conducting a comprehensive APK/AAB Teardown.
-            Examine the provided package diffs (including demangled C++ symbols, ProtoBuf schemas, SQLite tables, DEX annotations, and XOR endpoints).
+            You are a lead tech journalist and mobile software investigator conducting a complete APK/AAB/XAPK Teardown.
+            Examine the provided package diffs (including JNI native exports, GraphQL queries, ProtoBuf schemas, class hierarchy additions, SQLite tables, DEX annotations, and XOR endpoints).
             Format your response into a clean, modern Material Design 3 (MD3) report dashboard.
 
             Output strictly raw, clean HTML with inline CSS styled according to MD3 guidelines.
@@ -442,11 +496,11 @@ else:
             - Terminal / Command Blocks: background-color: #1D1B20; color: #E6E1E5; padding: 10px 14px; border-radius: 10px; font-family: monospace; font-size: 11px; word-break: break-all; margin-top: 8px; border-left: 3px solid #6750A4;
             
             Your report MUST include:
-            1. **Top Metric Chips Row**: Highlighting Size Change, Impact Rating (e.g. 9/10), New Flags Count, and C++ Native Symbols Count.
+            1. **Top Metric Chips Row**: Highlighting Size Change, Impact Rating (e.g. 9/10), New Flags Count, and Native JNI Bridge Count.
             2. **Target Keyword Findings**: If custom keywords were found, detail them prominently at the top.
-            3. **Executive Teardown Verdict**: Comprehensive synthesis explaining unreleased features, C++ architecture changes, and database modifications.
+            3. **Executive Teardown Verdict**: Comprehensive synthesis explaining unreleased features, JNI C++ code bridges, and GraphQL/ProtoBuf backend updates.
             4. **Unreleased Clues & Mobile Shell Commands**: Detail upcoming feature clues, followed by individual, copyable ADB shell commands inside dark terminal boxes (`adb shell device_config put...` or `adb shell am start...`).
-            5. **Deep Technical Audits**: Highlight ProtoBuf schemas, XOR/server endpoints, new database tables, and permissions.
+            5. **Deep Technical Audits**: Highlight JNI bridges, GraphQL queries, XOR/server endpoints, new database tables, and permissions.
 
             RAW CATEGORIZED PACKAGE DIFF DATA:
             {diff_summary}
