@@ -1,10 +1,14 @@
-# apk-diff
+<div align="center">
+
+![APK DIFF](https://img.shields.io/badge/APK-DIFF-00E5FF?style=for-the-badge&labelColor=555555)
 
 A web-based, mobile-friendly analysis tool that lets you compare two versions of an Android app and see exactly what changed under the hood. Whether you are looking for unreleased features, new API endpoints, or architectural updates, `apk-diff` breaks down complex binary differences into a clean, easy-to-read dashboard directly from your phone browser.
 
-![Python](https://img.shields.io/badge/Python-3.9%2B-blue)
-![Streamlit](https://img.shields.io/badge/Streamlit-Ready-red)
-![Groq](https://img.shields.io/badge/AI-Groq-orange)
+![Python](https://img.shields.io/badge/Python-3.9%2B-blue?style=flat-square)
+![Streamlit](https://img.shields.io/badge/Streamlit-Ready-red?style=flat-square)
+![Groq](https://img.shields.io/badge/AI-Groq-orange?style=flat-square)
+
+</div>
 
 ---
 
