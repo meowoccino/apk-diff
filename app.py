@@ -15,17 +15,16 @@ from PIL import Image
 from groq import Groq
 
 # ==================== PAGE SETUP ====================
-st.set_page_config(page_title="APK Teardown Studio", page_icon="⚡", layout="centered")
+st.set_page_config(page_title="apk-diff", page_icon="⚡", layout="centered")
 
 # ==================== UTILITY: SANITIZE TEXT ====================
 def sanitize(text):
-    """Prevents Streamlit from rendering $ as green LaTeX math or hiding HTML tags."""
+    """Prevents Streamlit from rendering $ as LaTeX math or hiding HTML tags."""
     if not text:
         return ""
-    # Escape HTML tags first, then escape dollar signs
-    return html.escape(text).replace("$", r"\$")
+    return html.escape(str(text)).replace("$", r"\$")
 
-# ==================== MATERIAL DESIGN 3 — MOBILE-FIRST STYLING ====================
+# ==================== MATERIAL DESIGN 3 — NATIVE MOBILE STYLING ====================
 st.markdown("""
 <style>
     html, body, [data-testid="stAppViewContainer"], .main, .block-container {
@@ -36,12 +35,12 @@ st.markdown("""
     .main .block-container {
         padding-top: 0.2rem !important;
         padding-bottom: 3rem !important;
-        padding-left: 0.9rem !important;
-        padding-right: 0.9rem !important;
+        padding-left: 0.8rem !important;
+        padding-right: 0.8rem !important;
         max-width: 480px !important;
     }
 
-    /* Nuke all Streamlit overlays */
+    /* Suppress default Streamlit web header/footer elements */
     [data-testid="stHeader"],
     [data-testid="stToolbar"],
     [data-testid="stDecoration"],
@@ -61,55 +60,56 @@ st.markdown("""
     .stApp {
         background-color: #FEF7FF;
         color: #1D1B20;
-        font-family: 'Roboto', -apple-system, BlinkMacSystemFont, sans-serif;
+        font-family: -apple-system, BlinkMacSystemFont, 'Roboto', sans-serif;
     }
 
-    /* ---- Hero header ---- */
+    /* ---- Native Header Card ---- */
     .hero-card {
         background: linear-gradient(135deg, #F3EDF7 0%, #EADDFF 100%);
         border: 1px solid #E7E0EC;
         border-radius: 22px;
-        padding: 16px 16px 14px 16px;
+        padding: 16px;
         margin-top: 4px;
         margin-bottom: 14px;
+        box-shadow: 0 2px 8px rgba(0,0,0,0.03);
     }
-    .hero-title-row { display: flex; align-items: center; gap: 10px; }
+    .hero-title-row { display: flex; align-items: center; gap: 12px; }
     .icon-badge {
         background-color: #6750A4;
         color: #fff;
-        width: 38px; height: 38px;
+        width: 40px; height: 40px;
         border-radius: 12px;
         display: flex; align-items: center; justify-content: center;
         flex-shrink: 0;
-        box-shadow: 0 2px 8px rgba(103,80,164,0.35);
+        box-shadow: 0 3px 10px rgba(103,80,164,0.3);
     }
-    .hero-title { font-size: 19px; font-weight: 800; color: #1D1B20; line-height: 1.15; }
+    .hero-title { font-size: 20px; font-weight: 800; color: #1D1B20; line-height: 1.15; letter-spacing: -0.02em; }
     .hero-sub { font-size: 12.5px; color: #49454F; line-height: 1.4; margin-top: 6px; }
     .hero-pillrow { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 10px; }
     .hero-pill {
-        background: rgba(255,255,255,0.6);
+        background: rgba(255,255,255,0.7);
         color: #21005D;
         font-size: 10.5px; font-weight: 700;
         padding: 3px 9px; border-radius: 100px;
-        border: 1px solid rgba(103,80,164,0.25);
+        border: 1px solid rgba(103,80,164,0.2);
     }
 
-    /* ---- Section label ---- */
+    /* ---- Section Labels ---- */
     .section-label {
         font-size: 11px; font-weight: 800; letter-spacing: 0.08em;
         color: #6750A4; text-transform: uppercase;
         margin: 18px 2px 8px 2px;
     }
 
-    /* ---- File upload slots ---- */
+    /* ---- File Upload Cards ---- */
     div[data-testid="stFileUploader"] {
         background-color: #F3EDF7 !important;
         border: 1.5px dashed #938F99 !important;
-        border-radius: 16px !important;
+        border-radius: 18px !important;
         padding: 6px !important;
     }
 
-    /* ---- Primary MD3 button ---- */
+    /* ---- Native MD3 Action Button ---- */
     div.stButton > button {
         background: #6750A4 !important;
         color: #FFFFFF !important;
@@ -118,7 +118,7 @@ st.markdown("""
         padding: 13px 20px !important;
         font-size: 15px !important;
         font-weight: 700 !important;
-        box-shadow: 0 3px 10px rgba(103, 80, 164, 0.3) !important;
+        box-shadow: 0 3px 10px rgba(103, 80, 164, 0.28) !important;
         transition: all 0.15s ease-in-out !important;
         margin-top: 10px;
         width: 100%;
@@ -126,65 +126,79 @@ st.markdown("""
         justify-content: center;
         align-items: center;
     }
-    div.stButton > button:hover, div.stButton > button:active {
+    div.stButton > button:active {
         background: #503E81 !important;
-        transform: translateY(-1px) !important;
+        transform: scale(0.98) !important;
     }
 
-    /* ---- Scanner / progress card (Light Theme) ---- */
+    /* ---- Modern Multi-Wave Radar Animation ---- */
     .scanner-box {
         background: linear-gradient(135deg, #F3EDF7 0%, #EADDFF 100%);
         color: #21005D;
-        padding: 26px 16px;
+        padding: 24px 16px;
         border-radius: 24px;
         text-align: center;
         margin-top: 10px;
         margin-bottom: 16px;
         border: 1px solid #E7E0EC;
-        box-shadow: 0 4px 12px rgba(103,80,164,0.1);
+        box-shadow: 0 4px 16px rgba(103,80,164,0.12);
+    }
+    .pulse-container {
+        position: relative;
+        width: 48px; height: 48px;
+        margin: 0 auto 12px auto;
+        display: flex; align-items: center; justify-content: center;
     }
     .radar-ring {
-        width: 42px; height: 42px;
-        margin: 0 auto 12px auto;
+        position: absolute;
+        width: 100%; height: 100%;
         border: 3px solid #6750A4;
         border-top-color: transparent;
         border-radius: 50%;
-        animation: spin 1s infinite linear;
+        animation: spin 0.9s infinite linear;
+    }
+    .radar-core {
+        width: 18px; height: 18px;
+        background: #6750A4;
+        border-radius: 50%;
+        animation: pulse-core 1.2s infinite ease-in-out;
     }
     @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
+    @keyframes pulse-core { 0% { transform: scale(0.8); opacity: 0.7; } 50% { transform: scale(1.15); opacity: 1; } 100% { transform: scale(0.8); opacity: 0.7; } }
 
-    /* ---- Quick-fact metric tiles ---- */
+    /* ---- Native Fact Cards ---- */
     .tile-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-bottom: 10px; }
     .tile {
         background: #F7F2FA;
         border: 1px solid #E7E0EC;
-        border-radius: 14px;
+        border-radius: 16px;
         padding: 10px 12px;
     }
     .tile-val { font-size: 17px; font-weight: 800; color: #21005D; }
-    .tile-lbl { font-size: 10.5px; color: #6F6A76; font-weight: 600; margin-top: 1px; }
+    .tile-lbl { font-size: 10.5px; color: #6F6A76; font-weight: 600; margin-top: 2px; }
 
-    .chip-row { display: flex; gap: 6px; flex-wrap: wrap; margin: 6px 0 4px 0; }
+    /* Fix pill row bottom margin so expander doesn't overlap */
+    .chip-row { display: flex; gap: 6px; flex-wrap: wrap; margin: 8px 0 12px 0; }
     .chip {
         background: #E8DEF8; color: #21005D;
-        font-size: 10.5px; font-weight: 700;
-        padding: 4px 10px; border-radius: 100px;
+        font-size: 11px; font-weight: 700;
+        padding: 5px 12px; border-radius: 100px;
     }
     .chip-warn { background: #FFDAD6; color: #410E0B; }
     .chip-ok { background: #D2F4D3; color: #0B3B12; }
 
-    /* ---- Tabs styling ---- */
-    .stTabs [data-baseweb="tab-list"] { gap: 2px; }
+    /* ---- Native Tabs ---- */
+    .stTabs [data-baseweb="tab-list"] { gap: 4px; }
     .stTabs [data-baseweb="tab"] {
         font-size: 12.5px !important;
         font-weight: 700 !important;
-        padding: 8px 10px !important;
-        border-radius: 10px 10px 0 0 !important;
+        padding: 8px 12px !important;
+        border-radius: 12px 12px 0 0 !important;
     }
 
     .mono-block {
         background-color: #1D1B20; color: #E6E1E5;
-        padding: 9px 12px; border-radius: 8px;
+        padding: 9px 12px; border-radius: 10px;
         font-family: 'SFMono-Regular', Consolas, monospace;
         font-size: 11px; word-break: break-all;
         margin-top: 4px; margin-bottom: 4px;
@@ -194,32 +208,37 @@ st.markdown("""
 
 # ==================== JADX DECOMPILER SETUP ====================
 def setup_jadx():
-    """Downloads and extracts JADX if not present in the cloud container."""
+    """Downloads and extracts JADX safely inside the cloud environment."""
     if not os.path.exists("jadx"):
-        with st.spinner("Setting up JADX environment..."):
-            urllib.request.urlretrieve("https://github.com/skylot/jadx/releases/download/v1.4.7/jadx-1.4.7.zip", "jadx.zip")
-            with zipfile.ZipFile("jadx.zip", 'r') as zip_ref:
+        with st.spinner("Preparing JADX engine..."):
+            jadx_zip_path = os.path.join(tempfile.gettempdir(), "jadx.zip")
+            urllib.request.urlretrieve("https://github.com/skylot/jadx/releases/download/v1.4.7/jadx-1.4.7.zip", jadx_zip_path)
+            with zipfile.ZipFile(jadx_zip_path, 'r') as zip_ref:
                 zip_ref.extractall("jadx")
             os.chmod("jadx/bin/jadx", 0o755)
 
 def decompile_apk(file_bytes, filename):
-    """Runs JADX CLI to decompile the APK to Java source (skipping resources)."""
-    setup_jadx()
-    
-    apk_path = os.path.join(tempfile.gettempdir(), filename)
-    with open(apk_path, "wb") as f:
-        f.write(file_bytes)
+    """Decompiles APK to Java source code safely without throwing FileNotFoundError."""
+    try:
+        setup_jadx()
+        apk_path = os.path.join(tempfile.gettempdir(), filename)
+        with open(apk_path, "wb") as f:
+            f.write(file_bytes)
+            
+        out_dir = os.path.join(tempfile.gettempdir(), f"jadx_out_{re.sub(r'[^a-zA-Z0-9]', '_', filename)}")
+        os.makedirs(out_dir, exist_ok=True)
         
-    out_dir = os.path.join(tempfile.gettempdir(), f"jadx_out_{filename}")
-    
-    with st.spinner(f"Running JADX Decompiler on {filename}... (This may take a minute)"):
-        subprocess.run(["jadx/bin/jadx", "-d", out_dir, "-r", "--show-bad-code", apk_path])
+        with st.spinner(f"Running JADX Decompiler on {filename}..."):
+            subprocess.run(["jadx/bin/jadx", "-d", out_dir, "-r", "--show-bad-code", apk_path], check=False)
+            
+        zip_base_path = os.path.join(tempfile.gettempdir(), f"{filename}_source")
+        archive_path = shutil.make_archive(zip_base_path, 'zip', out_dir)
         
-    zip_path = os.path.join(tempfile.gettempdir(), f"{filename}_source.zip")
-    shutil.make_archive(zip_path.replace('.zip', ''), 'zip', out_dir)
-    
-    with open(zip_path, "rb") as f:
-        return f.read()
+        with open(archive_path, "rb") as f:
+            return f.read()
+    except Exception as e:
+        st.error(f"Decompilation step encountered an issue: {e}")
+        return None
 
 # ==================== SESSION STATE ====================
 for key, default in [
@@ -424,7 +443,7 @@ def detect_signing_info(files):
         if low.startswith("meta-inf/") and low.endswith((".rsa", ".dsa", ".ec")):
             info.add(f"Certificate file: {f}")
         if low.endswith("stamp-cert-sha256"):
-            info.add("Play Store signing stamp present (v3+ hints)")
+            info.add("Play Store signing stamp present")
     return info
 
 
@@ -664,7 +683,6 @@ def render_quickfacts(old_data, new_data):
     added_ui = sorted(new_data["ui_strings"] - old_data["ui_strings"])
     removed_ui = sorted(old_data["ui_strings"] - new_data["ui_strings"])
     
-    # Filter empty or whitespace-only strings before counting/displaying
     added_ui_clean = [s for s in added_ui if s.strip()]
     removed_ui_clean = [s for s in removed_ui if s.strip()]
 
@@ -691,17 +709,43 @@ def render_quickfacts(old_data, new_data):
         raw_added_clean = [s for s in raw_added if s.strip()]
         raw_removed_clean = [s for s in raw_removed if s.strip()]
 
-        tab_add, tab_rem = st.tabs([f"Added ({len(raw_added_clean)})", f"Removed ({len(raw_removed_clean)})"])
-        with tab_add:
-            for s in raw_added_clean[:400]:
-                st.markdown(f'<div class="mono-block">{sanitize(s)}</div>', unsafe_allow_html=True)
-            if len(raw_added_clean) > 400:
-                st.caption(f"…and {len(raw_added_clean) - 400} more.")
-        with tab_rem:
-            for s in raw_removed_clean[:400]:
-                st.markdown(f'<div class="mono-block">{sanitize(s)}</div>', unsafe_allow_html=True)
-            if len(raw_removed_clean) > 400:
-                st.caption(f"…and {len(raw_removed_clean) - 400} more.")
+        # Download button for 100% of the raw string diffs
+        full_text_export = f"=== ADDED STRINGS ({len(raw_added_clean)}) ===\n" + "\n".join(raw_added_clean) + f"\n\n=== REMOVED STRINGS ({len(raw_removed_clean)}) ===\n" + "\n".join(raw_removed_clean)
+        st.download_button(
+            label=f"📥 Download Full Raw String Diff ({len(raw_added_clean) + len(raw_removed_clean)} items)",
+            data=full_text_export,
+            file_name="apk_diff_raw_strings.txt",
+            mime="text/plain",
+            use_container_width=True
+        )
+
+        search_query = st.text_input("🔍 Search Raw Strings:", placeholder="Filter strings...", key="str_search")
+
+        if search_query.strip():
+            sq = search_query.strip().lower()
+            filtered_added = [s for s in raw_added_clean if sq in s.lower()]
+            filtered_removed = [s for s in raw_removed_clean if sq in s.lower()]
+            st.caption(f"Showing matches for '{sanitize(search_query)}': {len(filtered_added)} added, {len(filtered_removed)} removed")
+            
+            tab_add, tab_rem = st.tabs([f"Added ({len(filtered_added)})", f"Removed ({len(filtered_removed)})"])
+            with tab_add:
+                for s in filtered_added[:300]:
+                    st.markdown(f'<div class="mono-block">{sanitize(s)}</div>', unsafe_allow_html=True)
+            with tab_rem:
+                for s in filtered_removed[:300]:
+                    st.markdown(f'<div class="mono-block">{sanitize(s)}</div>', unsafe_allow_html=True)
+        else:
+            tab_add, tab_rem = st.tabs([f"Added ({len(raw_added_clean)})", f"Removed ({len(raw_removed_clean)})"])
+            with tab_add:
+                for s in raw_added_clean[:250]:
+                    st.markdown(f'<div class="mono-block">{sanitize(s)}</div>', unsafe_allow_html=True)
+                if len(raw_added_clean) > 250:
+                    st.caption(f"…and {len(raw_added_clean) - 250} more. Download the text file above for all items.")
+            with tab_rem:
+                for s in raw_removed_clean[:250]:
+                    st.markdown(f'<div class="mono-block">{sanitize(s)}</div>', unsafe_allow_html=True)
+                if len(raw_removed_clean) > 250:
+                    st.caption(f"…and {len(raw_removed_clean) - 250} more. Download the text file above for all items.")
 
 
 # ==================== FULLSCREEN REPORT VIEW ====================
@@ -724,19 +768,20 @@ if st.session_state.report_html:
     st.markdown('<div class="section-label">AI TEARDOWN REPORT</div>', unsafe_allow_html=True)
     st.markdown(st.session_state.report_html, unsafe_allow_html=True)
     
-    # --- JADX DOWNLOAD SECTION ---
+    # --- JADX CODE EXTRACTION ---
     st.markdown('<div class="section-label">DEEP CODE EXTRACTION</div>', unsafe_allow_html=True)
     if st.button("Run JADX Decompiler (Java Source)"):
         zip_bytes = decompile_apk(st.session_state.new_file_bytes, st.session_state.new_file_name)
-        st.session_state.jadx_zip_bytes = zip_bytes
-        st.session_state.jadx_ready = True
-        st.rerun()
+        if zip_bytes:
+            st.session_state.jadx_zip_bytes = zip_bytes
+            st.session_state.jadx_ready = True
+            st.rerun()
         
     if st.session_state.jadx_ready and st.session_state.jadx_zip_bytes:
         st.download_button(
             label="Download Decompiled Java Source (.zip)",
             data=st.session_state.jadx_zip_bytes,
-            file_name=f"jadx_source.zip",
+            file_name=f"{st.session_state.new_file_name}_java_source.zip",
             mime="application/zip",
             use_container_width=True
         )
@@ -757,13 +802,13 @@ else:
     <div class="hero-card">
         <div class="hero-title-row">
             <div class="icon-badge">
-                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
-                    <rect x="5" y="2" width="14" height="20" rx="3" ry="3"></rect>
-                    <line x1="12" y1="18" x2="12.01" y2="18"></line>
-                    <path d="M9 6h6"></path>
+                <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#FFFFFF" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+                    <path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"></path>
+                    <polyline points="3.27 6.96 12 12.01 20.73 6.96"></polyline>
+                    <line x1="12" y1="22.08" x2="12" y2="12"></line>
                 </svg>
             </div>
-            <div class="hero-title">APK Teardown Studio</div>
+            <div class="hero-title">apk-diff</div>
         </div>
         <div class="hero-sub">Diffs two package builds and surfaces JNI exports, GraphQL/ProtoBuf schemas, DEX class changes, databases, split bundles, third-party SDKs, exposed secrets, architectures, locales, and signing metadata.</div>
         <div class="hero-pillrow">
@@ -794,7 +839,10 @@ else:
 
             scanner_placeholder.markdown("""
             <div class="scanner-box">
-                <div class="radar-ring"></div>
+                <div class="pulse-container">
+                    <div class="radar-ring"></div>
+                    <div class="radar-core"></div>
+                </div>
                 <div style="font-weight: 700; font-size: 15px; color: #21005D;">Decompressing Archives & Native JNI Bridges</div>
                 <div style="font-size: 12px; color: #49454F; margin-top: 4px;">Demangling C++ symbols, mapping GraphQL & ProtoBufs...</div>
             </div>
@@ -809,8 +857,11 @@ else:
 
             scanner_placeholder.markdown("""
             <div class="scanner-box">
-                <div class="radar-ring"></div>
-                <div style="font-weight: 700; font-size: 15px; color: #21005D;">Diffing Bytecode, SDKs & Signing Metadata</div>
+                <div class="pulse-container">
+                    <div class="radar-ring"></div>
+                    <div class="radar-core"></div>
+                </div>
+                <div style="font-weight: 700; font-size: 15px; color: #21005D;">Diffing Bytecode, SDKs & Metadata</div>
                 <div style="font-size: 12px; color: #49454F; margin-top: 4px;">Scanning for exposed secrets, ABI splits, locale diffs...</div>
             </div>
             """, unsafe_allow_html=True)
@@ -910,29 +961,46 @@ else:
 
             scanner_placeholder.markdown("""
             <div class="scanner-box">
-                <div class="radar-ring"></div>
-                <div style="font-weight: 700; font-size: 15px; color: #21005D;">Synthesizing AI Teardown Dashboard</div>
+                <div class="pulse-container">
+                    <div class="radar-ring"></div>
+                    <div class="radar-core"></div>
+                </div>
+                <div style="font-weight: 700; font-size: 15px; color: #21005D;">Synthesizing AI Teardown Report</div>
                 <div style="font-size: 12px; color: #49454F; margin-top: 4px;">Formulating unreleased predictions & technical audits...</div>
             </div>
             """, unsafe_allow_html=True)
 
             client = Groq(api_key=st.secrets["GROQ_API_KEY"])
 
+            # Prompt enforcing exact vector SVGs so icons never render as broken shapes
             prompt = f"""
-            You are a lead mobile teardown investigator. Examine these package diffs and output a clean, modern Material Design 3 dashboard report in HTML.
+            You are a lead mobile software investigator. Examine these package diffs and output a clean, modern Material Design 3 report dashboard in HTML.
             Output strictly raw, valid HTML with inline CSS. Do NOT wrap output in markdown codeblocks (do NOT use ```html or ```).
-            Be thorough and specific — write substantive analysis paragraphs (not just bullet fragments), referencing concrete class/file/endpoint names from the data. Where evidence is thin, say so explicitly rather than inventing detail.
+            
+            Header rules for cards:
+            Always start each card header with the exact provided SVG icon string on a flex row so icons render cleanly next to titles.
 
-            Design specifications:
             - **Top Metric Chips Row**: `display: flex; gap: 6px; flex-wrap: wrap; margin-bottom: 12px;`. Pills: `background: #EADDFF; color: #21005D; padding: 4px 10px; border-radius: 100px; font-size: 11px; font-weight: bold;`. Include Size Change ({size_diff_mb} MB), Impact Rating (e.g. 8/10), New Flags ({len(feature_toggles)}), New JNI Bridges ({len(added_jni)}), New SDKs ({len(added_sdks)}).
 
-            - **Card 1 (AI Analysis & Executive Summary)**: `background-color: #F3EDF7; border-radius: 16px; padding: 14px; margin-bottom: 12px; border-left: 4px solid #6750A4;`. Header with SVG sparkle icon + `<span style="font-weight:700;font-size:15px;color:#1D1B20;">AI Analysis & Executive Summary</span>`. 3-5 sentences of plain-language narrative on what actually changed and why it matters.
+            - **Card 1 (AI Analysis & Executive Summary)**:
+              Container style: `background-color: #F3EDF7; border-radius: 16px; padding: 14px; margin-bottom: 12px; border-left: 4px solid #6750A4;`
+              Header HTML: `<div style="display:flex; align-items:center; gap:8px; margin-bottom:8px;"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#6750A4" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2v4M12 18v4M4.93 4.93l2.83 2.83M16.24 16.24l2.83 2.83M2 12h4M18 12h4M4.93 19.07l2.83-2.83M16.24 7.76l2.83-2.83"/></svg><span style="font-weight:700;font-size:15px;color:#1D1B20;">AI Analysis & Executive Summary</span></div>`
+              Provide 3-5 clear narrative sentences explaining key updates.
 
-            - **Card 2 (Unreleased Feature Blueprints)**: `background-color: #FFD8E4; color: #31111D; border-radius: 16px; padding: 14px; margin-bottom: 12px; border-left: 4px solid #B12B58;`. Header with SVG lightning icon + title. Concrete predictions about unreleased features, each backed by cited flag/class/endpoint names. Include copyable terminal blocks (`background-color:#1D1B20;color:#E6E1E5;padding:8px 12px;border-radius:8px;font-family:monospace;font-size:11px;word-break:break-all;margin-top:6px;`) showing example adb/grep commands to inspect the evidence.
+            - **Card 2 (Unreleased Feature Blueprints)**:
+              Container style: `background-color: #FFD8E4; color: #31111D; border-radius: 16px; padding: 14px; margin-bottom: 12px; border-left: 4px solid #B12B58;`
+              Header HTML: `<div style="display:flex; align-items:center; gap:8px; margin-bottom:8px;"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#B12B58" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"></polygon></svg><span style="font-weight:700;font-size:15px;color:#31111D;">Unreleased Feature Blueprints</span></div>`
+              Concrete feature predictions with terminal code blocks (`background-color:#1D1B20;color:#E6E1E5;padding:8px 12px;border-radius:8px;font-family:monospace;font-size:11px;word-break:break-all;margin-top:6px;`).
 
-            - **Card 3 (Exact Package Technical Diffs)**: `background-color: #F7F2FA; border-radius: 16px; padding: 14px; margin-bottom: 12px; border: 1px solid #CAC4D0; border-left: 4px solid #79747E;`. Header with SVG code icon + title. Bullet list of new JNI methods, ProtoBuf schemas, GraphQL queries, endpoints, screens, services, permissions.
+            - **Card 3 (Exact Package Technical Diffs)**:
+              Container style: `background-color: #F7F2FA; border-radius: 16px; padding: 14px; margin-bottom: 12px; border: 1px solid #CAC4D0; border-left: 4px solid #79747E;`
+              Header HTML: `<div style="display:flex; align-items:center; gap:8px; margin-bottom:8px;"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#49454F" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><polyline points="16 18 22 12 16 6"></polyline><polyline points="8 6 2 12 8 18"></polyline></svg><span style="font-weight:700;font-size:15px;color:#1D1B20;">Exact Package Technical Diffs</span></div>`
+              Bullet point list of technical diffs (JNI methods, ProtoBuf schemas, GraphQL, endpoints, permissions).
 
-            - **Card 4 (Security, SDKs & Packaging Risk)**: `background-color: #FFF3E0; color: #3E2723; border-radius: 16px; padding: 14px; margin-bottom: 12px; border-left: 4px solid #E8A33D;`. Header with SVG shield icon + `<span style="font-weight:700;font-size:15px;color:#3E2723;">Security, SDKs & Packaging Risk</span>`. Cover: newly added/removed third-party SDKs and what data they typically collect, any pattern-matched secrets (flag clearly as "needs manual verification, may be a false positive"), new native architectures / locales / split bundles, and signing metadata observations.
+            - **Card 4 (Security, SDKs & Packaging Risk)**:
+              Container style: `background-color: #FFF3E0; color: #3E2723; border-radius: 16px; padding: 14px; margin-bottom: 12px; border-left: 4px solid #E8A33D;`
+              Header HTML: `<div style="display:flex; align-items:center; gap:8px; margin-bottom:8px;"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#3E2723" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"></path></svg><span style="font-weight:700;font-size:15px;color:#3E2723;">Security, SDKs & Packaging Risk</span></div>`
+              Cover newly added/removed third-party SDKs, exposed secrets findings, ABI/locale changes, and packaging metadata.
 
             RAW CATEGORIZED PACKAGE DIFF DATA:
             {diff_summary}
