@@ -830,7 +830,7 @@ def render_quickfacts(old_data, new_data, added_image_keys, new_data_images):
             with tab_rem:
                 for s in filtered_removed[:300]: st.markdown(f'<div class="mono-block">{sanitize(s)}</div>', unsafe_allow_html=True)
         else:
-            tab_add, tab_rem = st.tabs([f"Added ({len(raw_added_clean)})", f"Removed ({len(raw_removed_clean)})"])
+            tab_add, tab_rem = st.tabs([f"Added ({len(raw_added_clean)})", f"Removed ({len(raw_added_clean)})"])
             with tab_add:
                 for s in raw_added_clean[:250]: st.markdown(f'<div class="mono-block">{sanitize(s)}</div>', unsafe_allow_html=True)
                 if len(raw_added_clean) > 250: st.caption(f"…and {len(raw_added_clean) - 250} more. Download the text file above for all items.")
@@ -1151,8 +1151,7 @@ else:
                 prompt = f"""
                 You are an investigative mobile app software journalist finding hidden features in an APK diff.
                 Correlate the provided layouts, UI text, and feature flags to deduce unreleased features.
-                Do NOT include unescaped raw quotes inside JSON values.
-                Respond ONLY in valid JSON format with no markdown wrappers or backticks.
+                Respond ONLY in valid JSON format.
 
                 JSON Schema required:
                 {{
@@ -1176,6 +1175,7 @@ else:
                         messages=[{"role": "user", "content": prompt}],
                         temperature=0.1,
                         max_tokens=1000,
+                        response_format={"type": "json_object"}
                     )
                     raw_res = completion.choices[0].message.content.strip()
                     cleaned = clean_json_response(raw_res)
@@ -1218,9 +1218,8 @@ else:
 
                 prompt = f"""
                 You are a lead mobile software investigator analyzing an APK diff.
-                Analyze this diff data and respond ONLY in valid JSON format with no markdown wrappers or backticks.
+                Analyze this diff data and respond ONLY in valid JSON format.
                 Do NOT label standard WebRTC audio/video features or bitrate config keys as security risks. Say 'No security risks detected.' unless actual exposed secrets, unencrypted endpoints, or risky permissions exist.
-                Do NOT include unescaped raw quotes inside JSON values.
 
                 JSON Schema required:
                 {{
@@ -1240,6 +1239,7 @@ else:
                         messages=[{"role": "user", "content": prompt}],
                         temperature=0.1,
                         max_tokens=1500,
+                        response_format={"type": "json_object"}
                     )
                     raw_res = completion.choices[0].message.content.strip()
                     cleaned = clean_json_response(raw_res)
