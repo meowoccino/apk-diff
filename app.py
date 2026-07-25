@@ -5,12 +5,12 @@ import re
 from PIL import Image
 from groq import Groq
 
-# Page Setup & Styling
+# Page Setup & Clean Styling
 st.set_page_config(page_title="Universal APK Teardown Studio", page_icon="📱", layout="centered")
 
 st.markdown("""
 <style>
-    /* Hide header, toolbar, footer, and developer overlays */
+    /* Completely hide top header, toolbar, footer, and owner "Manage App" floating button */
     [data-testid="stHeader"], 
     [data-testid="stToolbar"], 
     [data-testid="stDecoration"], 
@@ -26,6 +26,7 @@ st.markdown("""
         padding: 0px !important;
     }
 
+    /* Remove empty padding at the top of mobile screens */
     .main .block-container {
         padding-top: 1rem !important;
         padding-bottom: 2rem !important;
@@ -50,17 +51,13 @@ st.markdown("""
 </style>
 """, unsafe_allow_html=True)
 
-st.markdown('<div class="title-text">📱 Deep APK & Bundle Scanner</div>', unsafe_allow_html=True)
-st.markdown('<div class="sub-text">Scans every file, folder, native library (.so), and game data config in the package.</div>', unsafe_allow_html=True)
+st.markdown('<div class="title-text">📱 Universal All-in-One APK Teardown</div>', unsafe_allow_html=True)
+st.markdown('<div class="sub-text">Scans every file, C++ library (.so), config, and string. Combines leaks, security, and code changes into one unified report.</div>', unsafe_allow_html=True)
 
-# Mode Selector
-analysis_mode = st.selectbox(
-    "Select Teardown Focus:",
-    [
-        "📰 Tech Leaks & Unreleased Content (Features, Flags, Game Stats & Native C++)",
-        "🛡️ Security & Privacy Audit (Permissions, Endpoints & Trackers)",
-        "⚡ Code Architecture & Bloat (Native Libraries, Assets & Frameworks)"
-    ]
+# Feature 1: Custom Keyword Focus Box
+custom_keywords = st.text_input(
+    "🎯 Custom Search / Keyword Hunt (Optional):", 
+    placeholder="e.g. dark_mode, season_2, pass, ai_tool, event"
 )
 
 # Upload Slots
@@ -70,7 +67,6 @@ with col1:
 with col2:
     new_file = st.file_uploader("New Version (.apk / .aab)", type=["apk", "aab"])
 
-# Common framework paths to ignore so real leaks stand out
 NOISE_PATTERNS = [
     "androidx/", "com/google/android/", "kotlin/", "java/", "javax/", 
     "android/support/", "org/apache/", "com/facebook/", "io/reactivex/",
@@ -78,12 +74,10 @@ NOISE_PATTERNS = [
 ]
 
 def is_framework_noise(token):
-    """Filters out standard framework noise to highlight actual app code."""
     token_lower = token.lower()
     return any(noise in token_lower for noise in NOISE_PATTERNS)
 
 def extract_strings_from_bytes(raw_bytes):
-    """Extracts clean printable ASCII and UTF-8 strings from any binary stream."""
     strings = set()
     matches = re.findall(rb'[\x20-\x7E]{5,}', raw_bytes)
     for m in matches:
@@ -96,7 +90,7 @@ def extract_strings_from_bytes(raw_bytes):
     return strings
 
 def inspect_entire_bundle(file_bytes):
-    """Scans every single file and folder inside the uploaded archive."""
+    """Scans every single file and folder inside the uploaded archive without skipping."""
     details = {
         "files": set(),
         "total_size": 0,
@@ -116,13 +110,12 @@ def inspect_entire_bundle(file_bytes):
                 details["files"].add(name)
                 details["total_size"] += info.file_size
                 
-                # Skip directory entries with 0 size
                 if name.endswith('/') or info.file_size == 0:
                     continue
                 
                 lower_name = name.lower()
                 
-                # Capture preview images (under 300KB, ignoring standard launcher icons)
+                # Capture small asset images
                 if any(lower_name.endswith(ext) for ext in ['.png', '.webp', '.jpg']) and info.file_size < 300 * 1024:
                     if not any(ignore in lower_name for ignore in ["icon", "launcher", "splash"]):
                         try:
@@ -130,12 +123,11 @@ def inspect_entire_bundle(file_bytes):
                         except Exception:
                             pass
 
-                # Read up to 10MB per file to keep performance fast on mobile
+                # Read files directly
                 try:
                     raw_bytes = z.read(name) if info.file_size < 10 * 1024 * 1024 else z.open(name).read(5 * 1024 * 1024)
                     file_tokens = extract_strings_from_bytes(raw_bytes)
                     
-                    # Categorize findings by file type
                     if lower_name.endswith(".so"):
                         details["native_strings"].update(file_tokens)
                     elif any(lower_name.endswith(ext) for ext in [".csv", ".json", ".proto", ".txt", ".dat", ".xml", ".properties"]):
@@ -143,7 +135,6 @@ def inspect_entire_bundle(file_bytes):
                     else:
                         details["all_strings"].update(file_tokens)
                         
-                    # Filter components
                     for token in file_tokens:
                         if "permission." in token.lower():
                             details["permissions"].add(token)
@@ -160,13 +151,13 @@ def inspect_entire_bundle(file_bytes):
     return details
 
 # Run Analysis
-if st.button("🚀 Run Deep Package Teardown", type="primary", use_container_width=True):
+if st.button("🚀 Run Complete All-in-One Teardown", type="primary", use_container_width=True):
     if "GROQ_API_KEY" not in st.secrets or not st.secrets["GROQ_API_KEY"]:
         st.error("GROQ_API_KEY is missing from Streamlit Secrets!")
     elif not old_file or not new_file:
         st.error("Please upload both Old and New package files.")
     else:
-        with st.spinner("Scanning every folder, C++ library (.so), and data config..."):
+        with st.spinner("Extracting code, C++ binaries, game configs, and security details..."):
             old_bytes = old_file.read()
             new_bytes = new_file.read()
             
@@ -177,7 +168,7 @@ if st.button("🚀 Run Deep Package Teardown", type="primary", use_container_wid
             added_files = list(new_data["files"] - old_data["files"])
             removed_files = list(old_data["files"] - new_data["files"])
             
-            # Data diffs across code, C++ binaries, and configs
+            # Data diffs
             added_native = list(new_data["native_strings"] - old_data["native_strings"])
             added_configs = list(new_data["config_strings"] - old_data["config_strings"])
             added_general = list(new_data["all_strings"] - old_data["all_strings"])
@@ -194,7 +185,7 @@ if st.button("🚀 Run Deep Package Teardown", type="primary", use_container_wid
             
             # Optional visual previews
             if added_image_keys:
-                with st.expander("🖼️ Newly Added Asset Graphic Previews", expanded=False):
+                with st.expander("🖼️ Newly Added Asset Graphics", expanded=False):
                     img_cols = st.columns(min(len(added_image_keys[:4]), 4))
                     for idx, img_key in enumerate(added_image_keys[:4]):
                         with img_cols[idx]:
@@ -204,50 +195,57 @@ if st.button("🚀 Run Deep Package Teardown", type="primary", use_container_wid
                             except Exception:
                                 pass
 
-            # Prioritize potential leak keywords across all file sources
+            # Feature 2: Smart Categorization Buckets Before AI
             combined_diffs = added_native + added_configs + added_general
-            prioritized_tokens = sorted(
-                combined_diffs, 
-                key=lambda x: any(k in x.lower() for k in ['flag', 'enable', 'config', 'hero', 'troop', 'event', 'season', 'shop', 'v2', 'beta', 'opt']), 
-                reverse=True
-            )[:150]
+            
+            # Match user search terms
+            target_matches = []
+            if custom_keywords.strip():
+                user_terms = [t.strip().lower() for t in custom_keywords.split(",") if t.strip()]
+                target_matches = [token for token in combined_diffs if any(term in token.lower() for term in user_terms)]
+
+            feature_toggles = [t for t in combined_diffs if any(k in t.lower() for k in ['flag', 'enable', 'config', 'opt', 'toggle', 'experiment', 'beta'])]
             
             diff_summary = f"""
             OLD PACKAGE: {old_file.name} ({old_size_mb} MB)
             NEW PACKAGE: {new_file.name} ({new_size_mb} MB) | SIZE CHANGE: {size_diff_mb} MB
-            FOCUS: {analysis_mode}
             
-            NEW FILE PATHS ADDED ({len(added_files)}):
-            {added_files[:40]}
+            === 1. TARGET KEYWORD MATCHES ({len(target_matches)}) ===
+            {target_matches[:30]}
             
-            REMOVED FILE PATHS ({len(removed_files)}):
-            {removed_files[:40]}
+            === 2. FEATURE TOGGLES & FLAGS ({len(feature_toggles)}) ===
+            {feature_toggles[:40]}
             
-            NEW STRINGS FROM NATIVE C++ LIBRARIES (.so) ({len(added_native)}):
-            {added_native[:40]}
+            === 3. NEW SCREENS & ACTIVITIES ({len(added_activities)}) ===
+            {added_activities[:25]}
             
-            NEW STRINGS FROM GAME CONFIGS & DATA FILES ({len(added_configs)}):
-            {added_configs[:40]}
+            === 4. DEEP LINKS & SERVER ROUTES ({len(added_deep_links)}) ===
+            {added_deep_links[:25]}
             
-            NEW SCREENS / ACTIVITIES ({len(added_activities)}):
-            {added_activities[:20]}
+            === 5. SECURITY & PERMISSIONS ({len(added_permissions)}) ===
+            {added_permissions[:20]}
             
-            NEW PERMISSIONS ({len(added_permissions)}):
-            {added_permissions[:15]}
+            === 6. NATIVE C++ BINARY TOKENS (.so) ({len(added_native)}) ===
+            {added_native[:35]}
             
-            NEW DEEP LINKS / ROUTES ({len(added_deep_links)}):
-            {added_deep_links[:15]}
+            === 7. GAME CONFIGS & DATA TABLES ({len(added_configs)}) ===
+            {added_configs[:35]}
             
-            PRIORITIZED HIGH-SIGNAL LEAK TOKENS ({len(combined_diffs)} total diffs, top 150 shown):
-            {prioritized_tokens}
+            === 8. NEW & REMOVED FILE PATHS ===
+            ADDED ({len(added_files)}): {added_files[:25]}
+            REMOVED ({len(removed_files)}): {removed_files[:25]}
             """
             
             client = Groq(api_key=st.secrets["GROQ_API_KEY"])
             
+            # Feature 3: Dedicated ADB Copy Blocks in prompt instructions
             prompt = f"""
-            You are a lead tech reporter and game data miner analyzing a complete APK/AAB package comparison.
-            Review these package diffs (extracted from all files, C++ native libraries, bytecode, and data configs) based on the focus mode: '{analysis_mode}'.
-            
+            You are a lead tech journalist and mobile software investigator running a complete All-in-One APK/AAB Teardown.
+            Review the provided pre-categorized package diffs and deliver a comprehensive report that covers:
+            1. **Unreleased Features & Leaks**
+            2. **Security & Permission Audits**
+            3. **Architecture & Code Bloat**
+
             Output strictly raw, clean HTML with inline CSS styled according to Material Design 3 (MD3) guidelines.
             Do NOT wrap your output in markdown codeblocks (do NOT use ```html or ```).
             
@@ -259,13 +257,13 @@ if st.button("🚀 Run Deep Package Teardown", type="primary", use_container_wid
             - Stat Badges: background-color: #CCE8E1; color: #05211B; font-weight: bold; padding: 4px 10px; border-radius: 100px; font-size: 11px; display: inline-block; margin-right: 4px;
 
             Your report MUST include:
-            1. **Update Impact Rating (1 to 10)**: Significance rating at the top.
-            2. **Diff Stat Badges**: Size change, new files, native C++ changes, and config token additions.
-            3. **Executive Teardown Verdict**: Clear synthesis of what the developers or designers added.
-            4. **Unreleased Clues & Activation Commands**: Connect new C++ symbols, config keys, and flags into feature predictions. Provide copyable shell activation commands (`adb shell device_config put...` or `adb shell am start...`).
-            5. **Native C++ & Config Findings**: Highlight notable findings extracted specifically from `.so` libraries or game data tables.
+            1. **Update Impact Rating (1 to 10)**: An overall significance badge at the top.
+            2. **Target Keyword Findings**: If keyword matches were provided, analyze them prominently.
+            3. **Executive Teardown Verdict**: Comprehensive summary covering unreleased features, security changes, and overall architecture.
+            4. **Unreleased Clues & Mobile ADB Command Blocks**: Provide individual, copyable shell activation commands (`adb shell device_config put...` or `adb shell am start...`) formatted cleanly inside dark terminal boxes.
+            5. **Security & Deep Link Audit**: Highlight newly added URL schemes or sensitive permissions.
 
-            RAW PACKAGE DIFF DATA:
+            RAW CATEGORIZED PACKAGE DIFF DATA:
             {diff_summary}
             """
             
@@ -281,5 +279,14 @@ if st.button("🚀 Run Deep Package Teardown", type="primary", use_container_wid
                 output_html = re.sub(r"^```\s*", "", output_html, flags=re.MULTILINE)
                 
                 st.markdown(output_html, unsafe_allow_html=True)
+                
+                # Feature 4: One-Tap Report Export
+                st.subheader("📋 One-Tap Report Copy")
+                st.text_area(
+                    "Copy full raw text below for Telegram, Reddit, or forums:", 
+                    value=re.sub('<[^<]+?>', '', output_html), 
+                    height=120
+                )
+                
             except Exception as e:
                 st.error(f"Groq API Error: {e}")
