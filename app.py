@@ -12,7 +12,7 @@ import shutil
 import html
 from collections import defaultdict
 from PIL import Image
-from google import genai
+from groq import Groq
 
 # ==================== PAGE SETUP ====================
 st.set_page_config(page_title="apk-diff", page_icon="⚡", layout="centered")
@@ -208,7 +208,6 @@ st.markdown("""
 
 # ==================== JADX DECOMPILER SETUP ====================
 def setup_jadx():
-    """Downloads and extracts JADX safely inside the cloud environment."""
     if not os.path.exists("jadx"):
         with st.spinner("Preparing JADX engine..."):
             jadx_zip_path = os.path.join(tempfile.gettempdir(), "jadx.zip")
@@ -218,7 +217,6 @@ def setup_jadx():
             os.chmod("jadx/bin/jadx", 0o755)
 
 def decompile_apk(file_bytes, filename):
-    """Decompiles APK to Java source code safely without throwing FileNotFoundError."""
     try:
         setup_jadx()
         apk_path = os.path.join(tempfile.gettempdir(), filename)
@@ -282,12 +280,12 @@ SDK_SIGNATURES = {
     "InMobi": ["inmobi"],
     "AppLovin": ["applovin"],
     "Bugsnag": ["bugsnag"],
-    "WorkManager (background jobs)": ["androidx/work"],
+    "WorkManager": ["androidx/work"],
     "ExoPlayer / Media3": ["google/android/exoplayer", "androidx/media3"],
     "gRPC": ["io/grpc"],
     "Retrofit": ["retrofit2"],
     "OkHttp": ["okhttp3"],
-    "Room (local DB)": ["androidx/room"],
+    "Room": ["androidx/room"],
     "WebRTC": ["org/webrtc"],
 }
 
@@ -301,17 +299,14 @@ SECRET_PATTERNS = {
     "JWT-looking Token": r'eyJ[A-Za-z0-9_\-]{10,}\.[A-Za-z0-9_\-]{10,}\.[A-Za-z0-9_\-]{10,}',
 }
 
-
 def is_framework_noise(token):
     token_lower = token.lower()
     return any(noise in token_lower for noise in NOISE_PATTERNS)
-
 
 UI_TEXT_SKIP_SUBSTR = (
     "://", ".png", ".jpg", ".webp", ".xml", ".so", ".dex", ".ttf", ".otf",
     "androidx", "kotlin.", "java.", "com.google", "com.android",
 )
-
 
 def looks_like_ui_text(s):
     if not (2 <= len(s) <= 140):
@@ -326,7 +321,6 @@ def looks_like_ui_text(s):
     if not has_letter:
         return False
     return has_space or has_lower or "_" in s
-
 
 def demangle_cpp_symbol(mangled_str):
     try:
@@ -344,7 +338,6 @@ def demangle_cpp_symbol(mangled_str):
     except Exception:
         pass
     return mangled_str
-
 
 def inspect_sqlite_db(raw_bytes):
     schema_info = set()
@@ -364,7 +357,6 @@ def inspect_sqlite_db(raw_bytes):
         pass
     return schema_info
 
-
 def check_xor_obfuscation(raw_bytes):
     found_urls = set()
     target = b"http"
@@ -382,7 +374,6 @@ def check_xor_obfuscation(raw_bytes):
                 break
     return found_urls
 
-
 def extract_strings_from_bytes(raw_bytes):
     strings = set()
     matches = re.findall(rb'[\x20-\x7E]{5,}', raw_bytes)
@@ -395,46 +386,31 @@ def extract_strings_from_bytes(raw_bytes):
             pass
     return strings
 
-
 def categorize_file(lower_name):
-    if lower_name.endswith(".dex"):
-        return "Dalvik Bytecode (DEX)"
-    if lower_name.endswith(".so"):
-        return "Native Libraries (.so)"
-    if lower_name.endswith((".png", ".webp", ".jpg", ".jpeg", ".gif")):
-        return "Images"
-    if lower_name.endswith(".arsc"):
-        return "Compiled Resources (ARSC)"
-    if lower_name.endswith((".db", ".sqlite")):
-        return "Databases"
-    if lower_name.endswith((".ttf", ".otf")):
-        return "Fonts"
-    if lower_name.endswith(".xml"):
-        return "XML Resources"
-    if lower_name.startswith("meta-inf/"):
-        return "Signing / Metadata"
-    if lower_name.startswith("assets/"):
-        return "Raw Assets"
+    if lower_name.endswith(".dex"): return "Dalvik Bytecode (DEX)"
+    if lower_name.endswith(".so"): return "Native Libraries (.so)"
+    if lower_name.endswith((".png", ".webp", ".jpg", ".jpeg", ".gif")): return "Images"
+    if lower_name.endswith(".arsc"): return "Compiled Resources (ARSC)"
+    if lower_name.endswith((".db", ".sqlite")): return "Databases"
+    if lower_name.endswith((".ttf", ".otf")): return "Fonts"
+    if lower_name.endswith(".xml"): return "XML Resources"
+    if lower_name.startswith("meta-inf/"): return "Signing / Metadata"
+    if lower_name.startswith("assets/"): return "Raw Assets"
     return "Other"
-
 
 def detect_architectures(files):
     archs = set()
     for f in files:
         m = re.match(r'lib/([^/]+)/', f)
-        if m:
-            archs.add(m.group(1))
+        if m: archs.add(m.group(1))
     return archs
-
 
 def detect_locales(files):
     locales = set()
     for f in files:
         m = re.search(r'values-([a-zA-Z]{2}(?:-r[A-Z]{2})?)/', f)
-        if m:
-            locales.add(m.group(1))
+        if m: locales.add(m.group(1))
     return locales
-
 
 def detect_signing_info(files):
     info = set()
@@ -446,27 +422,22 @@ def detect_signing_info(files):
             info.add("Play Store signing stamp present")
     return info
 
-
 def detect_split_bundles(files):
     splits = set()
     for f in files:
         m = re.search(r'(config\.[a-zA-Z0-9_]+|split_[a-zA-Z0-9_]+)\.apk', f)
-        if m:
-            splits.add(m.group(1))
+        if m: splits.add(m.group(1))
     return splits
-
 
 def detect_third_party_sdks(class_paths, config_strings):
     found = set()
     haystacks = [t.lower() for t in class_paths] + [t.lower() for t in list(config_strings)[:3000]]
     for sdk_name, sigs in SDK_SIGNATURES.items():
         for sig in sigs:
-            sig_l = sig.lower()
-            if any(sig_l in h for h in haystacks):
+            if any(sig.lower() in h for h in haystacks):
                 found.add(sdk_name)
                 break
     return found
-
 
 def scan_for_secrets(token_sets):
     findings = set()
@@ -479,10 +450,8 @@ def scan_for_secrets(token_sets):
             if m:
                 findings.add(f"{pattern_name} → {m.group(0)[:44]}")
                 break
-        if len(findings) > 25:
-            break
+        if len(findings) > 25: break
     return findings
-
 
 def process_zip_archive(zip_obj, details):
     for name in zip_obj.namelist():
@@ -493,26 +462,21 @@ def process_zip_archive(zip_obj, details):
                 sub_apk_bytes = zip_obj.read(name)
                 with zipfile.ZipFile(io.BytesIO(sub_apk_bytes), "r") as sub_z:
                     process_zip_archive(sub_z, details)
-            except Exception:
-                pass
+            except Exception: pass
             continue
 
         details["files"].add(name)
         details["total_size"] += info.file_size
-
         lower_name = name.lower()
         category = categorize_file(lower_name)
         details["category_sizes"][category] = details["category_sizes"].get(category, 0) + info.file_size
 
-        if name.endswith('/') or info.file_size == 0:
-            continue
+        if name.endswith('/') or info.file_size == 0: continue
 
         if any(lower_name.endswith(ext) for ext in ['.png', '.webp', '.jpg']) and info.file_size < 300 * 1024:
             if not any(ignore in lower_name for ignore in ["icon", "launcher", "splash"]):
-                try:
-                    details["images"][name.split('/')[-1]] = zip_obj.read(name)
-                except Exception:
-                    pass
+                try: details["images"][name.split('/')[-1]] = zip_obj.read(name)
+                except Exception: pass
 
         try:
             raw_bytes = zip_obj.read(name) if info.file_size < 10 * 1024 * 1024 else zip_obj.open(name).read(5 * 1024 * 1024)
@@ -521,40 +485,32 @@ def process_zip_archive(zip_obj, details):
                 details["db_schemas"].update(inspect_sqlite_db(raw_bytes))
 
             proto_matches = re.findall(rb'type\.googleapis\.com/[A-Za-z0-9_.-]+', raw_bytes)
-            for pm in proto_matches:
-                details["protobuf_schemas"].add(pm.decode('ascii', errors='ignore'))
+            for pm in proto_matches: details["protobuf_schemas"].add(pm.decode('ascii', errors='ignore'))
 
             graphql_matches = re.findall(rb'(?:query|mutation)\s+[A-Za-z0-9_]+', raw_bytes)
-            for gqm in graphql_matches:
-                details["graphql_ops"].add(gqm.decode('ascii', errors='ignore'))
+            for gqm in graphql_matches: details["graphql_ops"].add(gqm.decode('ascii', errors='ignore'))
 
             jni_matches = re.findall(rb'Java_[A-Za-z0-9_]+', raw_bytes)
-            for jm in jni_matches:
-                details["jni_exports"].add(jm.decode('ascii', errors='ignore'))
+            for jm in jni_matches: details["jni_exports"].add(jm.decode('ascii', errors='ignore'))
 
             if lower_name.endswith(".dex"):
                 class_matches = re.findall(rb'L[a-zA-Z0-9_$]+/[a-zA-Z0-9_$]+;', raw_bytes)
                 for cm in class_matches[:150]:
                     decoded_cls = cm.decode('ascii', errors='ignore')
-                    if not is_framework_noise(decoded_cls):
-                        details["class_paths"].add(decoded_cls)
+                    if not is_framework_noise(decoded_cls): details["class_paths"].add(decoded_cls)
 
                 anno_matches = re.findall(rb'(?:SerializedName|Keep|Beta|Experimental|RequiresOptIn)[A-Za-z0-9_"\':\s]{2,60}', raw_bytes)
                 for am in anno_matches:
-                    try:
-                        details["annotations"].add(am.decode('ascii', errors='ignore').strip())
-                    except Exception:
-                        pass
+                    try: details["annotations"].add(am.decode('ascii', errors='ignore').strip())
+                    except Exception: pass
 
             details["xor_urls"].update(check_xor_obfuscation(raw_bytes))
             file_tokens = extract_strings_from_bytes(raw_bytes)
 
             if lower_name.endswith(".so"):
                 for token in file_tokens:
-                    if token.startswith("_Z"):
-                        details["native_strings"].add(demangle_cpp_symbol(token))
-                    else:
-                        details["native_strings"].add(token)
+                    if token.startswith("_Z"): details["native_strings"].add(demangle_cpp_symbol(token))
+                    else: details["native_strings"].add(token)
             elif any(lower_name.endswith(ext) for ext in [".csv", ".json", ".proto", ".txt", ".dat", ".xml", ".properties"]):
                 details["config_strings"].update(file_tokens)
             else:
@@ -565,29 +521,19 @@ def process_zip_archive(zip_obj, details):
 
             for token in file_tokens:
                 token_lower = token.lower()
-                if "permission." in token_lower:
-                    details["permissions"].add(token)
-                elif "activity" in token_lower or "screen" in token_lower:
-                    details["activities"].add(token)
-                elif "service" in token_lower or "receiver" in token_lower:
-                    details["services"].add(token)
-                elif token_lower.startswith("http://") or token_lower.startswith("https://"):
-                    details["endpoints"].add(token)
-                elif "scheme://" in token_lower or "://" in token_lower:
-                    details["deep_links"].add(token)
-        except Exception:
-            pass
-
+                if "permission." in token_lower: details["permissions"].add(token)
+                elif "activity" in token_lower or "screen" in token_lower: details["activities"].add(token)
+                elif "service" in token_lower or "receiver" in token_lower: details["services"].add(token)
+                elif token_lower.startswith("http://") or token_lower.startswith("https://"): details["endpoints"].add(token)
+                elif "scheme://" in token_lower or "://" in token_lower: details["deep_links"].add(token)
+        except Exception: pass
 
 def inspect_entire_bundle(file_bytes):
     details = {
-        "files": set(), "total_size": 0,
-        "all_strings": set(), "native_strings": set(), "config_strings": set(),
-        "annotations": set(), "protobuf_schemas": set(), "graphql_ops": set(),
-        "jni_exports": set(), "class_paths": set(), "db_schemas": set(),
-        "xor_urls": set(), "activities": set(), "services": set(),
-        "permissions": set(), "deep_links": set(), "endpoints": set(),
-        "images": {}, "category_sizes": {}, "ui_strings": set(),
+        "files": set(), "total_size": 0, "all_strings": set(), "native_strings": set(), "config_strings": set(),
+        "annotations": set(), "protobuf_schemas": set(), "graphql_ops": set(), "jni_exports": set(), "class_paths": set(),
+        "db_schemas": set(), "xor_urls": set(), "activities": set(), "services": set(), "permissions": set(),
+        "deep_links": set(), "endpoints": set(), "images": {}, "category_sizes": {}, "ui_strings": set(),
     }
     try:
         with zipfile.ZipFile(io.BytesIO(file_bytes), "r") as z:
@@ -601,7 +547,6 @@ def inspect_entire_bundle(file_bytes):
     details["splits"] = detect_split_bundles(details["files"])
     details["third_party_sdks"] = detect_third_party_sdks(details["class_paths"], details["config_strings"])
     return details
-
 
 def render_quickfacts(old_data, new_data):
     old_size_mb = round(old_data["total_size"] / (1024 * 1024), 2)
@@ -632,12 +577,9 @@ def render_quickfacts(old_data, new_data):
     st.markdown(tiles, unsafe_allow_html=True)
 
     chips = '<div class="chip-row">'
-    for a in sorted(new_archs):
-        chips += f'<span class="chip">New arch: {sanitize(a)}</span>'
-    for l in sorted(new_locales)[:8]:
-        chips += f'<span class="chip">New locale: {sanitize(l)}</span>'
-    for s in sorted(new_splits):
-        chips += f'<span class="chip">Split: {sanitize(s)}</span>'
+    for a in sorted(new_archs): chips += f'<span class="chip">New arch: {sanitize(a)}</span>'
+    for l in sorted(new_locales)[:8]: chips += f'<span class="chip">New locale: {sanitize(l)}</span>'
+    for s in sorted(new_splits): chips += f'<span class="chip">Split: {sanitize(s)}</span>'
     if not new_archs and not new_locales and not new_splits:
         chips += '<span class="chip">No new architectures / locales / splits</span>'
     chips += '</div>'
@@ -671,8 +613,7 @@ def render_quickfacts(old_data, new_data):
     with st.expander("Signing & packaging metadata"):
         sign_new = new_data["signing_info"]
         if sign_new:
-            for s in sorted(sign_new):
-                st.markdown(f"- {sanitize(s)}")
+            for s in sorted(sign_new): st.markdown(f"- {sanitize(s)}")
         else:
             st.markdown("_No META-INF signature files found in this archive._")
         if new_data["architectures"]:
@@ -688,19 +629,15 @@ def render_quickfacts(old_data, new_data):
 
     with st.expander(f"New UI-facing text / labels ({len(added_ui_clean)})"):
         if added_ui_clean:
-            for s in added_ui_clean[:250]:
-                st.markdown(f"- {sanitize(s)}")
-            if len(added_ui_clean) > 250:
-                st.caption(f"…and {len(added_ui_clean) - 250} more (truncated).")
+            for s in added_ui_clean[:250]: st.markdown(f"- {sanitize(s)}")
+            if len(added_ui_clean) > 250: st.caption(f"…and {len(added_ui_clean) - 250} more (truncated).")
         else:
             st.markdown("_No new UI copy detected between builds._")
         
         if removed_ui_clean:
             st.markdown(f"**Removed ({len(removed_ui_clean)}):**")
-            for s in removed_ui_clean[:100]:
-                st.markdown(f"- ~~{sanitize(s)}~~")
-            if len(removed_ui_clean) > 100:
-                st.caption(f"…and {len(removed_ui_clean) - 100} more (truncated).")
+            for s in removed_ui_clean[:100]: st.markdown(f"- ~~{sanitize(s)}~~")
+            if len(removed_ui_clean) > 100: st.caption(f"…and {len(removed_ui_clean) - 100} more (truncated).")
 
     with st.expander("Raw string diff — unfiltered (no AI)"):
         raw_added = sorted((new_data["all_strings"] | new_data["config_strings"]) - (old_data["all_strings"] | old_data["config_strings"]))
@@ -728,24 +665,17 @@ def render_quickfacts(old_data, new_data):
             
             tab_add, tab_rem = st.tabs([f"Added ({len(filtered_added)})", f"Removed ({len(filtered_removed)})"])
             with tab_add:
-                for s in filtered_added[:300]:
-                    st.markdown(f'<div class="mono-block">{sanitize(s)}</div>', unsafe_allow_html=True)
+                for s in filtered_added[:300]: st.markdown(f'<div class="mono-block">{sanitize(s)}</div>', unsafe_allow_html=True)
             with tab_rem:
-                for s in filtered_removed[:300]:
-                    st.markdown(f'<div class="mono-block">{sanitize(s)}</div>', unsafe_allow_html=True)
+                for s in filtered_removed[:300]: st.markdown(f'<div class="mono-block">{sanitize(s)}</div>', unsafe_allow_html=True)
         else:
             tab_add, tab_rem = st.tabs([f"Added ({len(raw_added_clean)})", f"Removed ({len(raw_removed_clean)})"])
             with tab_add:
-                for s in raw_added_clean[:250]:
-                    st.markdown(f'<div class="mono-block">{sanitize(s)}</div>', unsafe_allow_html=True)
-                if len(raw_added_clean) > 250:
-                    st.caption(f"…and {len(raw_added_clean) - 250} more. Download the text file above for all items.")
+                for s in raw_added_clean[:250]: st.markdown(f'<div class="mono-block">{sanitize(s)}</div>', unsafe_allow_html=True)
+                if len(raw_added_clean) > 250: st.caption(f"…and {len(raw_added_clean) - 250} more. Download the text file above for all items.")
             with tab_rem:
-                for s in raw_removed_clean[:250]:
-                    st.markdown(f'<div class="mono-block">{sanitize(s)}</div>', unsafe_allow_html=True)
-                if len(raw_removed_clean) > 250:
-                    st.caption(f"…and {len(raw_removed_clean) - 250} more. Download the text file above for all items.")
-
+                for s in raw_removed_clean[:250]: st.markdown(f'<div class="mono-block">{sanitize(s)}</div>', unsafe_allow_html=True)
+                if len(raw_removed_clean) > 250: st.caption(f"…and {len(raw_removed_clean) - 250} more. Download the text file above for all items.")
 
 # ==================== FULLSCREEN REPORT VIEW ====================
 if st.session_state.report_html:
@@ -823,8 +753,8 @@ else:
     new_file = st.file_uploader("New Version (.apk, .aab, .xapk, .apks)", type=["apk", "aab", "xapk", "apks", "zip"])
 
     if st.button("Run Deep Package Teardown", type="primary", use_container_width=True):
-        if "GEMINI_API_KEY" not in st.secrets or not st.secrets["GEMINI_API_KEY"]:
-            st.error("GEMINI_API_KEY is missing from Streamlit Secrets! Get one for free at aistudio.google.com")
+        if "GROQ_API_KEY" not in st.secrets or not st.secrets["GROQ_API_KEY"]:
+            st.error("GROQ_API_KEY is missing from Streamlit Secrets!")
         elif not old_file or not new_file:
             st.error("Please upload both Old and New package files.")
         else:
@@ -904,7 +834,9 @@ else:
             new_size_mb = round(new_data["total_size"] / (1024 * 1024), 2)
             size_diff_mb = round(new_size_mb - old_size_mb, 2)
 
-            combined_diffs = added_native + added_configs + added_general + added_annotations + added_jni
+            # LIMIT THE PROMPT SIZE TO PREVENT GROQ CRASHING (413 Payload Too Large)
+            # Max tokens allowed by Groq free tier is ~12,000 per minute.
+            combined_diffs = added_native[:20] + added_configs[:20] + added_general[:20] + added_annotations[:15] + added_jni[:15]
             feature_toggles = [t for t in combined_diffs if any(k in t.lower() for k in ['flag', 'enable', 'config', 'opt', 'toggle', 'experiment', 'beta'])]
 
             diff_summary = f"""
@@ -912,34 +844,34 @@ else:
             NEW PACKAGE: {new_file.name} ({new_size_mb} MB) | SIZE CHANGE: {size_diff_mb} MB
 
             === 1. FEATURE TOGGLES & ANNOTATIONS ===
-            FLAGS ({len(feature_toggles)}): {feature_toggles[:30]}
-            ANNOTATIONS ({len(added_annotations)}): {added_annotations[:20]}
+            FLAGS: {feature_toggles[:15]}
+            ANNOTATIONS: {added_annotations[:10]}
 
             === 2. JNI NATIVE C++ BRIDGES & SYMBOLS ===
-            JNI EXPORTS ({len(added_jni)}): {added_jni[:25]}
-            DEMANGLED C++ SYMBOLS ({len(added_native)}): {added_native[:30]}
+            JNI EXPORTS: {added_jni[:15]}
+            DEMANGLED C++ SYMBOLS: {added_native[:15]}
 
             === 3. GRAPHQL, PROTOBUFS & DATABASES ===
-            GRAPHQL QUERIES ({len(added_graphql)}): {added_graphql[:20]}
-            PROTOBUFS ({len(added_protobufs)}): {added_protobufs[:20]}
-            DB TABLES ({len(added_dbs)}): {added_dbs[:15]}
+            GRAPHQL QUERIES: {added_graphql[:10]}
+            PROTOBUFS: {added_protobufs[:10]}
+            DB TABLES: {added_dbs[:10]}
 
-            === 4. BYTECODE CLASS HIERARCHY DIFFS ({len(added_classes)}) ===
-            {added_classes[:30]}
+            === 4. BYTECODE CLASS HIERARCHY DIFFS ===
+            CLASSES: {added_classes[:15]}
 
             === 5. SERVER ENDPOINTS & DEEP LINKS ===
-            ENDPOINTS ({len(added_endpoints)}): {added_endpoints[:20]}
-            XOR DECODED ENDPOINTS ({len(added_xor)}): {added_xor[:15]}
-            SCHEMES ({len(added_deep_links)}): {added_deep_links[:20]}
+            ENDPOINTS: {added_endpoints[:10]}
+            XOR DECODED ENDPOINTS: {added_xor[:10]}
+            SCHEMES: {added_deep_links[:10]}
 
             === 6. NEW SCREENS & BACKGROUND SERVICES ===
-            ACTIVITIES ({len(added_activities)}): {added_activities[:20]}
-            SERVICES ({len(added_services)}): {added_services[:20]}
-            PERMISSIONS ({len(added_permissions)}): {added_permissions[:15]}
+            ACTIVITIES: {added_activities[:10]}
+            SERVICES: {added_services[:10]}
+            PERMISSIONS: {added_permissions[:10]}
 
             === 7. FILE PATH DIFFS ===
-            ADDED FILES ({len(added_files)}): {added_files[:20]}
-            REMOVED FILES ({len(removed_files)}): {removed_files[:20]}
+            ADDED FILES: {added_files[:10]}
+            REMOVED FILES: {removed_files[:10]}
 
             === 8. THIRD-PARTY SDK ECOSYSTEM ===
             NEW SDKs: {added_sdks}
@@ -947,15 +879,15 @@ else:
 
             === 9. PACKAGING / ARCHITECTURE / LOCALIZATION ===
             NEW NATIVE ARCHITECTURES: {added_archs}
-            NEW LOCALES: {added_locales}
-            SIGNING INFO (new build): {list(new_data['signing_info'])}
-            SPLIT BUNDLES (new build): {list(new_data['splits'])}
+            NEW LOCALES: {added_locales[:10]}
+            SIGNING INFO: {list(new_data['signing_info'])}
+            SPLIT BUNDLES: {list(new_data['splits'])}
 
-            === 10. POTENTIAL EXPOSED SECRETS (pattern-matched only, verify manually) ===
-            {secrets_found[:20]}
+            === 10. POTENTIAL EXPOSED SECRETS ===
+            {secrets_found[:10]}
 
-            === 11. NEW UI-FACING TEXT / LABELS (from resources.arsc string pool) ===
-            {added_ui_strings[:40]}
+            === 11. NEW UI-FACING TEXT / LABELS ===
+            {added_ui_strings[:15]}
             """
 
             scanner_placeholder.markdown("""
@@ -969,13 +901,13 @@ else:
             </div>
             """, unsafe_allow_html=True)
 
-            client = genai.Client(api_key=st.secrets["GEMINI_API_KEY"])
+            client = Groq(api_key=st.secrets["GROQ_API_KEY"])
 
+            # Prompt enforcing exact vector SVGs so icons never render as broken shapes
             prompt = f"""
-            You are a lead mobile teardown investigator. Examine these package diffs and output a clean, modern Material Design 3 dashboard report in HTML.
+            You are a lead mobile software investigator. Examine these package diffs and output a clean, modern Material Design 3 report dashboard in HTML.
             Output strictly raw, valid HTML with inline CSS. Do NOT wrap output in markdown codeblocks (do NOT use ```html or ```).
-            Be thorough and specific — write substantive analysis paragraphs (not just bullet fragments), referencing concrete class/file/endpoint names from the data. Where evidence is thin, say so explicitly rather than inventing detail.
-
+            
             Header rules for cards:
             Always start each card header with the exact provided SVG icon string on a flex row so icons render cleanly next to titles.
 
@@ -1006,15 +938,14 @@ else:
             """
 
             try:
-                response = client.models.generate_content(
-                    model="gemini-2.0-flash",
-                    contents=prompt,
-                    config=genai.types.GenerateContentConfig(
-                        temperature=0.1,
-                    )
+                completion = client.chat.completions.create(
+                    model="llama-3.3-70b-versatile",
+                    messages=[{"role": "user", "content": prompt}],
+                    temperature=0.1,
+                    max_tokens=8000,
                 )
 
-                output_html = response.text
+                output_html = completion.choices[0].message.content
                 output_html = re.sub(r"^```html\s*", "", output_html, flags=re.MULTILINE)
                 output_html = re.sub(r"^```\s*", "", output_html, flags=re.MULTILINE)
 
@@ -1024,4 +955,4 @@ else:
 
             except Exception as e:
                 scanner_placeholder.empty()
-                st.error(f"Gemini API Error: {e}")
+                st.error(f"Groq API Error: {e}")
