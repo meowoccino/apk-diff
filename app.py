@@ -10,6 +10,7 @@ import subprocess
 import urllib.request
 import shutil
 import html
+import json
 from collections import defaultdict
 from PIL import Image
 from groq import Groq
@@ -111,7 +112,7 @@ st.markdown("""
     }
     div[data-testid="stFileUploader"] small { display: none !important; }
 
-    /* ---- Native MD3 Action Button (Smaller Pill) ---- */
+    /* ---- Native MD3 Action Button ---- */
     div.stButton > button {
         background: #6750A4 !important;
         color: #FFFFFF !important;
@@ -143,7 +144,7 @@ st.markdown("""
     [data-testid="stExpander"] summary p { font-weight: 600 !important; color: #1D1B20 !important; font-size: 14px !important; }
     [data-testid="stExpander"] summary:hover { background-color: #F8F9FA !important; }
 
-    /* ---- Modern Multi-Wave Radar Animation ---- */
+    /* ---- Radar Scanner Animation ---- */
     .scanner-box {
         background: #FFFFFF;
         color: #21005D;
@@ -199,6 +200,39 @@ st.markdown("""
     .chip-warn { background: #FFEAEE; color: #410E0B; }
     .chip-ok { background: #E6F4EA; color: #0B3B12; }
 
+    /* ---- AI Card Styling ---- */
+    .report-card {
+        border-radius: 16px;
+        padding: 16px;
+        margin-bottom: 12px;
+        box-shadow: 0 1px 4px rgba(0,0,0,0.03);
+    }
+    .report-card-title {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        font-weight: 800;
+        font-size: 15px;
+        margin-bottom: 10px;
+    }
+    .report-card-body {
+        font-size: 13.5px;
+        line-height: 1.5;
+    }
+    .report-card-body p { margin-bottom: 8px; }
+    .report-card-body ul { margin-left: 18px; margin-bottom: 8px; }
+    .report-card-body li { margin-bottom: 4px; }
+    .cmd-box {
+        background-color: #1D1B20;
+        color: #E6E1E5;
+        padding: 8px 12px;
+        border-radius: 8px;
+        font-family: 'SFMono-Regular', Consolas, monospace;
+        font-size: 11px;
+        word-break: break-all;
+        margin: 8px 0;
+    }
+
     /* ---- Tabs styling ---- */
     .stTabs [data-baseweb="tab-list"] { gap: 4px; }
     .stTabs [data-baseweb="tab"] {
@@ -218,7 +252,7 @@ st.markdown("""
 </style>
 """, unsafe_allow_html=True)
 
-# ALWAYS RENDER THE HEADER FIRST
+# HEADER CARD
 st.markdown("""
 <div class="hero-card">
     <div class="hero-title-row">
@@ -277,7 +311,7 @@ def decompile_apk(file_bytes, filename):
 
 # ==================== SESSION STATE ====================
 for key, default in [
-    ("report_html", None),
+    ("report_data", None),
     ("added_image_keys", []),
     ("new_data_images", {}),
     ("quickfacts", None),
@@ -740,14 +774,115 @@ def render_quickfacts(old_data, new_data, added_image_keys, new_data_images):
                 for s in raw_removed_clean[:250]: st.markdown(f'<div class="mono-block">{sanitize(s)}</div>', unsafe_allow_html=True)
                 if len(raw_removed_clean) > 250: st.caption(f"…and {len(raw_removed_clean) - 250} more. Download the text file above for all items.")
 
+def format_html_list(items):
+    """Converts Python string lists cleanly into safe HTML bullet items."""
+    if not items:
+        return "<li>No changes detected.</li>"
+    return "".join(f"<li><code>{sanitize(item)}</code></li>" if "_" in item or "." in item or "/" in item else f"<li>{sanitize(item)}</li>" for item in items[:12])
+
+def render_ai_dashboard(report_data):
+    """PYTHON TEMPLATE ENGINE — Renders 100% unbreakable HTML/CSS Cards."""
+    size_mb = report_data.get("size_diff_mb", 0.0)
+    flags_cnt = report_data.get("num_flags", 0)
+    jni_cnt = report_data.get("num_jni", 0)
+    sdks_cnt = report_data.get("num_sdks", 0)
+    
+    # Render top metric chips
+    st.markdown(f"""
+    <div class="chip-row">
+        <span class="chip">Size Change: <b>{'+' if size_mb >= 0 else ''}{size_mb} MB</b></span>
+        <span class="chip">Impact Rating: <b>8/10</b></span>
+        <span class="chip">New Flags: <b>{flags_cnt}</b></span>
+        <span class="chip">New JNI Bridges: <b>{jni_cnt}</b></span>
+        <span class="chip">New SDKs: <b>{sdks_cnt}</b></span>
+    </div>
+    """, unsafe_allow_html=True)
+
+    # Card 1: Executive Summary
+    summary_text = sanitize(report_data.get("summary", "Analysis complete."))
+    st.markdown(f"""
+    <div class="report-card" style="background-color: #F3EDF7; border-left: 4px solid #6750A4; color: #1D1B20;">
+        <div class="report-card-title">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#6750A4" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M12 2v4M12 18v4M4.93 4.93l2.83 2.83M16.24 16.24l2.83 2.83M2 12h4M18 12h4M4.93 19.07l2.83-2.83M16.24 7.76l2.83-2.83"/>
+            </svg>
+            <span>AI Analysis & Executive Summary</span>
+        </div>
+        <div class="report-card-body">
+            <p>{summary_text}</p>
+        </div>
+    </div>
+    """, unsafe_allow_html=True)
+
+    # Card 2: Feature Blueprints
+    blueprints_text = sanitize(report_data.get("blueprints", "No new unreleased feature patterns detected."))
+    cmd_code = sanitize(report_data.get("command", "adb shell dumpsys package | grep -i feature"))
+    st.markdown(f"""
+    <div class="report-card" style="background-color: #FFD8E4; border-left: 4px solid #B12B58; color: #31111D;">
+        <div class="report-card-title">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#B12B58" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+                <polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"></polygon>
+            </svg>
+            <span>Unreleased Feature Blueprints</span>
+        </div>
+        <div class="report-card-body">
+            <p>{blueprints_text}</p>
+            <div class="cmd-box">{cmd_code}</div>
+        </div>
+    </div>
+    """, unsafe_allow_html=True)
+
+    # Card 3: Exact Technical Diffs
+    jni_html = format_html_list(report_data.get("jni", []))
+    proto_html = format_html_list(report_data.get("proto", []))
+    graphql_html = format_html_list(report_data.get("graphql", []))
+    endpoints_html = format_html_list(report_data.get("endpoints", []))
+    permissions_html = format_html_list(report_data.get("permissions", []))
+    
+    st.markdown(f"""
+    <div class="report-card" style="background-color: #F7F2FA; border: 1px solid #CAC4D0; border-left: 4px solid #79747E; color: #1D1B20;">
+        <div class="report-card-title">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#49454F" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+                <polyline points="16 18 22 12 16 6"></polyline>
+                <polyline points="8 6 2 12 8 18"></polyline>
+            </svg>
+            <span>Exact Package Technical Diffs</span>
+        </div>
+        <div class="report-card-body">
+            <b>JNI Native Methods:</b><ul>{jni_html}</ul>
+            <b>ProtoBuf Schemas:</b><ul>{proto_html}</ul>
+            <b>GraphQL Queries:</b><ul>{graphql_html}</ul>
+            <b>Server Endpoints:</b><ul>{endpoints_html}</ul>
+            <b>Permissions Added:</b><ul>{permissions_html}</ul>
+        </div>
+    </div>
+    """, unsafe_allow_html=True)
+
+    # Card 4: Security & SDKs
+    sec_text = sanitize(report_data.get("security", "No elevated risk found."))
+    st.markdown(f"""
+    <div class="report-card" style="background-color: #FFF3E0; border-left: 4px solid #E8A33D; color: #3E2723;">
+        <div class="report-card-title">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#3E2723" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"></path>
+            </svg>
+            <span>Security, SDKs & Packaging Risk</span>
+        </div>
+        <div class="report-card-body">
+            <p>{sec_text}</p>
+        </div>
+    </div>
+    """, unsafe_allow_html=True)
+
+
 # ==================== FULLSCREEN REPORT VIEW ====================
-if st.session_state.report_html:
+if st.session_state.report_data:
     if st.session_state.quickfacts:
         old_q, new_q = st.session_state.quickfacts
         render_quickfacts(old_q, new_q, st.session_state.added_image_keys, st.session_state.new_data_images)
 
     st.markdown('<div class="section-label">AI TEARDOWN REPORT</div>', unsafe_allow_html=True)
-    st.markdown(st.session_state.report_html, unsafe_allow_html=True)
+    render_ai_dashboard(st.session_state.report_data)
     
     st.markdown("<div style='height: 16px;'></div>", unsafe_allow_html=True)
     if st.button("Extract Java Source Code", use_container_width=True):
@@ -768,7 +903,7 @@ if st.session_state.report_html:
 
     st.markdown("<div style='height: 6px;'></div>", unsafe_allow_html=True)
     if st.button("Start New Scan", use_container_width=True):
-        st.session_state.report_html = None
+        st.session_state.report_data = None
         st.session_state.added_image_keys = []
         st.session_state.new_data_images = {}
         st.session_state.quickfacts = None
@@ -863,48 +998,23 @@ else:
             new_size_mb = round(new_data["total_size"] / (1024 * 1024), 2)
             size_diff_mb = round(new_size_mb - old_size_mb, 2)
 
-            # TUNED FOR 6,000 TPM LIMIT (llama-3.1-8b-instant strict per-minute quota)
             combined_diffs = added_native[:30] + added_configs[:30] + added_general[:30] + added_annotations[:20] + added_jni[:20]
             feature_toggles = list(set([t for t in combined_diffs if any(k in t.lower() for k in ['flag', 'enable', 'config', 'opt', 'toggle', 'experiment', 'beta'])]))
 
             diff_summary = f"""
-            === PACKAGE META ===
             SIZE CHANGE: {size_diff_mb} MB
-            
-            === 1. FEATURE TOGGLES & ANNOTATIONS ===
-            FLAGS: {feature_toggles[:25]}
-            ANNOTATIONS: {added_annotations[:15]}
-
-            === 2. JNI NATIVE C++ BRIDGES & SYMBOLS ===
+            FEATURE FLAGS: {feature_toggles[:15]}
             JNI EXPORTS: {added_jni[:15]}
             DEMANGLED C++ SYMBOLS: {added_native[:15]}
-
-            === 3. GRAPHQL, PROTOBUFS & DATABASES ===
-            GRAPHQL QUERIES: {added_graphql[:15]}
-            PROTOBUFS: {added_protobufs[:15]}
-            DB TABLES: {added_dbs[:15]}
-
-            === 4. BYTECODE CLASS HIERARCHY DIFFS ===
-            CLASSES: {added_classes[:20]}
-
-            === 5. SERVER ENDPOINTS & DEEP LINKS ===
-            ENDPOINTS: {added_endpoints[:15]}
-            SCHEMES: {added_deep_links[:15]}
-
-            === 6. NEW SCREENS & BACKGROUND SERVICES ===
-            ACTIVITIES: {added_activities[:15]}
-            SERVICES: {added_services[:15]}
-            PERMISSIONS: {added_permissions[:15]}
-
-            === 7. THIRD-PARTY SDK ECOSYSTEM ===
-            NEW SDKs: {added_sdks}
-            REMOVED SDKs: {removed_sdks}
-
-            === 8. POTENTIAL EXPOSED SECRETS ===
-            {secrets_found[:15]}
-
-            === 9. NEW UI-FACING TEXT / LABELS ===
-            {added_ui_strings[:20]}
+            GRAPHQL: {added_graphql[:10]}
+            PROTOBUFS: {added_protobufs[:10]}
+            CLASSES: {added_classes[:15]}
+            ENDPOINTS: {added_endpoints[:10]}
+            PERMISSIONS: {added_permissions[:10]}
+            NEW SDKS: {added_sdks}
+            REMOVED SDKS: {removed_sdks}
+            SECRETS: {secrets_found[:10]}
+            NEW UI COPY: {added_ui_strings[:15]}
             """
 
             scanner_placeholder.markdown("""
@@ -921,38 +1031,16 @@ else:
             client = Groq(api_key=st.secrets["GROQ_API_KEY"])
 
             prompt = f"""
-            You are a lead mobile software investigator analyzing an APK diff. Output a clean Material Design 3 HTML dashboard. 
-            Do NOT use generic filler text like "The updated package introduces new features and improvements." If a list is empty, state explicitly: "No changes detected." Always explicitly cite the exact class/file names from the provided data.
-            Group similar items together (e.g., 'BetaTab' and 'Beta tab' are the same feature). Do not repeat yourself.
-            Output strictly raw HTML (no markdown codeblocks). 
+            You are a lead mobile software investigator analyzing an APK diff.
+            Analyze this diff data and respond ONLY in valid JSON format with no markdown wrappers or backticks.
 
-            Use the EXACT HTML blocks provided below for the card containers and headers. Do not change the SVG paths or container styles.
-
-            - **Metric Chips Row**: `display: flex; gap: 6px; flex-wrap: wrap; margin-bottom: 12px;`. Pills: `background: #EADDFF; color: #21005D; padding: 4px 10px; border-radius: 100px; font-size: 11px; font-weight: bold;`. Include: Size Change ({size_diff_mb} MB), Impact Rating (e.g. 8/10), New Flags ({len(feature_toggles)}), New JNI Bridges ({len(added_jni)}), New SDKs ({len(added_sdks)}).
-
-            - **Card 1 (AI Analysis & Executive Summary)**:
-              <div style="background-color: #F3EDF7; border-radius: 16px; padding: 14px; margin-bottom: 12px; border-left: 4px solid #6750A4;">
-              <div style="display:flex; align-items:center; gap:8px; margin-bottom:8px;"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#6750A4" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2v4M12 18v4M4.93 4.93l2.83 2.83M16.24 16.24l2.83 2.83M2 12h4M18 12h4M4.93 19.07l2.83-2.83M16.24 7.76l2.83-2.83"/></svg><span style="font-weight:800;font-size:16px;color:#1D1B20;">AI Analysis & Executive Summary</span></div>
-              Write 3-4 specific narrative sentences explaining the actual technical changes.
-              </div>
-
-            - **Card 2 (Unreleased Feature Blueprints)**:
-              <div style="background-color: #FFD8E4; color: #31111D; border-radius: 16px; padding: 14px; margin-bottom: 12px; border-left: 4px solid #B12B58;">
-              <div style="display:flex; align-items:center; gap:8px; margin-bottom:8px;"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#B12B58" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"></polygon></svg><span style="font-weight:800;font-size:16px;color:#31111D;">Unreleased Feature Blueprints</span></div>
-              Provide concrete feature predictions based strictly on the data. Include terminal code blocks (`background-color:#1D1B20;color:#E6E1E5;padding:8px 12px;border-radius:8px;font-family:monospace;font-size:11px;word-break:break-all;margin-top:6px;`) showing example grep/adb commands.
-              </div>
-
-            - **Card 3 (Exact Package Technical Diffs)**:
-              <div style="background-color: #F7F2FA; border-radius: 16px; padding: 14px; margin-bottom: 12px; border: 1px solid #CAC4D0; border-left: 4px solid #79747E;">
-              <div style="display:flex; align-items:center; gap:8px; margin-bottom:8px;"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#49454F" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><polyline points="16 18 22 12 16 6"></polyline><polyline points="8 6 2 12 8 18"></polyline></svg><span style="font-weight:800;font-size:16px;color:#1D1B20;">Exact Package Technical Diffs</span></div>
-              List JNI methods, ProtoBuf schemas, GraphQL, endpoints, and permissions.
-              </div>
-
-            - **Card 4 (Security, SDKs & Packaging Risk)**:
-              <div style="background-color: #FFF3E0; color: #3E2723; border-radius: 16px; padding: 14px; margin-bottom: 12px; border-left: 4px solid #E8A33D;">
-              <div style="display:flex; align-items:center; gap:8px; margin-bottom:8px;"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#3E2723" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"></path></svg><span style="font-weight:800;font-size:16px;color:#3E2723;">Security, SDKs & Packaging Risk</span></div>
-              Analyze added/removed SDKs and secrets.
-              </div>
+            JSON Schema required:
+            {{
+              "summary": "3-4 concise, highly specific narrative sentences explaining the technical changes and intent.",
+              "blueprints": "Concrete feature predictions based strictly on the new flags/classes.",
+              "command": "An adb terminal grep command, e.g.: adb shell dumpsys package | grep -i feature_name",
+              "security": "Assessment of newly added SDKs, exposed secrets, or packaging risks."
+            }}
 
             RAW DATA:
             {diff_summary}
@@ -963,17 +1051,30 @@ else:
                     model="llama-3.1-8b-instant",
                     messages=[{"role": "user", "content": prompt}],
                     temperature=0.1,
-                    max_tokens=2500,
+                    max_tokens=1500,
                 )
 
-                output_html = completion.choices[0].message.content
-                output_html = re.sub(r"^```html\s*", "", output_html, flags=re.MULTILINE)
-                output_html = re.sub(r"^```\s*", "", output_html, flags=re.MULTILINE)
+                raw_res = completion.choices[0].message.content.strip()
+                raw_res = re.sub(r"^```json\s*", "", raw_res, flags=re.MULTILINE)
+                raw_res = re.sub(r"^```\s*", "", raw_res, flags=re.MULTILINE)
 
-                st.session_state.report_html = output_html
+                parsed_ai = json.loads(raw_res)
+
+                # Package findings safely into state for Python rendering
+                parsed_ai["size_diff_mb"] = size_diff_mb
+                parsed_ai["num_flags"] = len(feature_toggles)
+                parsed_ai["num_jni"] = len(added_jni)
+                parsed_ai["num_sdks"] = len(added_sdks)
+                parsed_ai["jni"] = added_jni
+                parsed_ai["proto"] = added_protobufs
+                parsed_ai["graphql"] = added_graphql
+                parsed_ai["endpoints"] = added_endpoints
+                parsed_ai["permissions"] = added_permissions
+
+                st.session_state.report_data = parsed_ai
                 scanner_placeholder.empty()
                 st.rerun()
 
             except Exception as e:
                 scanner_placeholder.empty()
-                st.error(f"Groq API Error: {e}")
+                st.error(f"Analysis error: {e}")
