@@ -11,14 +11,15 @@ import urllib.request
 import shutil
 import html
 import json
-from collections import defaultdict
+import base64
+import time
 from PIL import Image
 from groq import Groq
 
 # ==================== PAGE SETUP ====================
 st.set_page_config(page_title="apk-diff", layout="centered")
 
-# ==================== UTILITY FUNCTIONS ====================
+# ==================== UTILITY & ADB FUNCTIONS ====================
 def sanitize(text):
     if not text:
         return ""
@@ -27,8 +28,7 @@ def sanitize(text):
 def clean_json_response(raw_str):
     cleaned = re.sub(r"^```json\s*", "", raw_str, flags=re.MULTILINE)
     cleaned = re.sub(r"^```\s*", "", cleaned, flags=re.MULTILINE)
-    cleaned = cleaned.strip()
-    return cleaned
+    return cleaned.strip()
 
 def format_title_case(token):
     if not token:
@@ -36,26 +36,95 @@ def format_title_case(token):
     words = str(token).replace("_", " ").split()
     return " ".join(w.capitalize() for w in words)
 
-# ==================== MATERIAL DESIGN 3 — NATIVE MOBILE STYLING ====================
+def execute_adb_command(command_str):
+    try:
+        cmd = command_str.strip()
+        if cmd.startswith("adb "):
+            cmd = cmd[4:]
+        cmd_args = ["adb"] + cmd.split()
+        result = subprocess.run(cmd_args, capture_output=True, text=True, timeout=8)
+        return result.stdout.strip() or result.stderr.strip() or "Command sent successfully."
+    except Exception as e:
+        return f"Execution error: {e}"
+
+def capture_device_screenshot():
+    try:
+        res = subprocess.run(["adb", "exec-out", "screencap", "-p"], capture_output=True, timeout=5)
+        if res.returncode == 0 and res.stdout:
+            return Image.open(io.BytesIO(res.stdout))
+        return None
+    except Exception:
+        return None
+
+def analyze_screenshot_with_vision(image, prompt, api_key):
+    try:
+        buffered = io.BytesIO()
+        image.save(buffered, format="PNG")
+        img_base64 = base64.b64encode(buffered.getvalue()).decode('utf-8')
+
+        client = Groq(api_key=api_key)
+        completion = client.chat.completions.create(
+            model="llama-3.2-11b-vision-preview",
+            messages=[
+                {
+                    "role": "user",
+                    "content": [
+                        {"type": "text", "text": prompt},
+                        {"type": "image_url", "image_url": {"url": f"data:image/png;base64,{img_base64}"}}
+                    ]
+                }
+            ],
+            temperature=0.2,
+            max_tokens=500
+        )
+        return completion.choices[0].message.content
+    except Exception as e:
+        return f"Vision analysis error: {e}"
+
+# ==================== JADX DECOMPILER SETUP ====================
+def setup_jadx():
+    if not os.path.exists("jadx"):
+        jadx_zip_path = os.path.join(tempfile.gettempdir(), "jadx.zip")
+        urllib.request.urlretrieve("https://github.com/skylot/jadx/releases/download/v1.4.7/jadx-1.4.7.zip", jadx_zip_path)
+        with zipfile.ZipFile(jadx_zip_path, 'r') as zip_ref:
+            zip_ref.extractall("jadx")
+        os.chmod("jadx/bin/jadx", 0o755)
+
+def decompile_apk(file_bytes, filename):
+    try:
+        setup_jadx()
+        apk_path = os.path.join(tempfile.gettempdir(), filename)
+        with open(apk_path, "wb") as f:
+            f.write(file_bytes)
+            
+        out_dir = os.path.join(tempfile.gettempdir(), f"jadx_out_{re.sub(r'[^a-zA-Z0-9]', '_', filename)}")
+        os.makedirs(out_dir, exist_ok=True)
+        
+        subprocess.run(["jadx/bin/jadx", "-d", out_dir, "-r", "--show-bad-code", apk_path], check=False)
+            
+        zip_base_path = os.path.join(tempfile.gettempdir(), f"{filename}_source")
+        archive_path = shutil.make_archive(zip_base_path, 'zip', out_dir)
+        
+        with open(archive_path, "rb") as f:
+            return f.read()
+    except Exception as e:
+        st.error(f"Extraction error: {e}")
+        return None
+
+# ==================== STYLING & RADAR ANIMATION ====================
 st.markdown("""
 <style>
     html, body, [data-testid="stAppViewContainer"], .main, .block-container {
-        padding-top: 0rem !important;
-        margin-top: 0rem !important;
+        padding-top: 0rem !important; margin-top: 0rem !important;
     }
     .main .block-container {
-        padding-top: 0.2rem !important;
-        padding-bottom: 3rem !important;
-        padding-left: 0.8rem !important;
-        padding-right: 0.8rem !important;
+        padding-top: 0.2rem !important; padding-bottom: 3rem !important;
+        padding-left: 0.8rem !important; padding-right: 0.8rem !important;
         max-width: 480px !important;
     }
     [data-testid="stHeader"], [data-testid="stToolbar"], [data-testid="stDecoration"],
-    [data-testid="stStatusWidget"], [data-testid="manage-app-button"],
-    [data-testid="stAppDeployButton"], header, footer {
-        display: none !important;
-        visibility: hidden !important;
-        height: 0px !important;
+    [data-testid="manage-app-button"], [data-testid="stAppDeployButton"], header, footer {
+        display: none !important; visibility: hidden !important; height: 0px !important;
     }
     .stApp { background-color: #F8F9FA; color: #1D1B20; font-family: -apple-system, sans-serif; }
     
@@ -68,7 +137,7 @@ st.markdown("""
         background-color: #6750A4; color: #fff; width: 38px; height: 38px;
         border-radius: 10px; display: flex; align-items: center; justify-content: center;
     }
-    .hero-title { font-size: 20px; font-weight: 800; color: #1D1B20; letter-spacing: -0.01em; }
+    .hero-title { font-size: 20px; font-weight: 800; color: #1D1B20; }
     .hero-sub { font-size: 13px; color: #49454F; line-height: 1.4; margin-top: 6px; }
     .hero-pillrow { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 10px; }
     .hero-pill { background: #F3EDF7; color: #21005D; font-size: 11px; font-weight: 600; padding: 4px 10px; border-radius: 100px; }
@@ -78,18 +147,28 @@ st.markdown("""
     div[data-testid="stFileUploader"] small { display: none !important; }
     div.stButton > button { background: #6750A4 !important; color: #FFFFFF !important; border: none !important; border-radius: 100px !important; padding: 8px 16px !important; font-size: 14px !important; font-weight: 600 !important; width: 100%; min-height: 42px !important; }
     .secondary-btn button { background: #31111D !important; color: #FFD8E4 !important; }
-    
-    [data-testid="stExpander"] { background-color: #FFFFFF !important; border: 1px solid #E7E0EC !important; border-radius: 16px !important; margin-bottom: 10px !important; }
-    [data-testid="stExpander"] summary { padding: 14px 16px !important; }
-    [data-testid="stExpander"] summary p { font-weight: 600 !important; color: #1D1B20 !important; font-size: 14px !important; }
-    
-    .scanner-box { background: #FFFFFF; color: #21005D; padding: 24px 16px; border-radius: 24px; text-align: center; margin-top: 10px; margin-bottom: 16px; border: 1px solid #E7E0EC; }
-    .pulse-container { position: relative; width: 48px; height: 48px; margin: 0 auto 12px auto; display: flex; align-items: center; justify-content: center; }
-    .radar-ring { position: absolute; width: 100%; height: 100%; border: 3px solid #6750A4; border-top-color: transparent; border-radius: 50%; animation: spin 0.9s infinite linear; }
-    .radar-core { width: 18px; height: 18px; background: #6750A4; border-radius: 50%; animation: pulse-core 1.2s infinite ease-in-out; }
+
+    /* ---- RADAR SCANNER ANIMATION ---- */
+    .scanner-box {
+        background: #FFFFFF; color: #21005D; padding: 24px 16px; border-radius: 24px;
+        text-align: center; margin-top: 10px; margin-bottom: 16px; border: 1px solid #E7E0EC;
+        box-shadow: 0 4px 16px rgba(103,80,164,0.08);
+    }
+    .pulse-container {
+        position: relative; width: 48px; height: 48px; margin: 0 auto 12px auto;
+        display: flex; align-items: center; justify-content: center;
+    }
+    .radar-ring {
+        position: absolute; width: 100%; height: 100%; border: 3px solid #6750A4;
+        border-top-color: transparent; border-radius: 50%; animation: spin 0.9s infinite linear;
+    }
+    .radar-core {
+        width: 18px; height: 18px; background: #6750A4; border-radius: 50%;
+        animation: pulse-core 1.2s infinite ease-in-out;
+    }
     @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
     @keyframes pulse-core { 0% { transform: scale(0.8); opacity: 0.7; } 50% { transform: scale(1.15); opacity: 1; } 100% { transform: scale(0.8); opacity: 0.7; } }
-    
+
     .tile-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-bottom: 12px; }
     .tile { background: #FFFFFF; border: 1px solid #E7E0EC; border-radius: 14px; padding: 12px; }
     .tile-val { font-size: 16px; font-weight: 800; color: #21005D; }
@@ -108,7 +187,7 @@ st.markdown("""
     .hunter-title { display: flex; align-items: center; gap: 10px; font-weight: 800; font-size: 16px; color: #D0BCFF; margin-bottom: 12px; }
     .hunter-evidence { background: #332D41; padding: 10px; border-radius: 8px; font-size: 12.5px; margin-bottom: 10px; }
     .hunter-cmd { background: #000000; color: #00FF00; padding: 10px; border-radius: 8px; font-family: monospace; font-size: 11px; word-break: break-all; }
-    .mono-block { background-color: #F8F9FA; color: #1D1B20; border: 1px solid #E7E0EC; padding: 10px 12px; border-radius: 8px; font-family: monospace; font-size: 11px; word-break: break-all; margin-top: 4px; margin-bottom: 4px; }
+    .mono-block { background-color: #F8F9FA; color: #1D1B20; border: 1px solid #E7E0EC; padding: 10px 12px; border-radius: 8px; font-family: monospace; font-size: 11px; word-break: break-all; margin: 4px 0; }
 </style>
 """, unsafe_allow_html=True)
 
@@ -130,32 +209,10 @@ st.markdown("""
 </div>
 """, unsafe_allow_html=True)
 
-def setup_jadx():
-    if not os.path.exists("jadx"):
-        with st.spinner("Preparing extraction engine..."):
-            jadx_zip_path = os.path.join(tempfile.gettempdir(), "jadx.zip")
-            urllib.request.urlretrieve("https://github.com/skylot/jadx/releases/download/v1.4.7/jadx-1.4.7.zip", jadx_zip_path)
-            with zipfile.ZipFile(jadx_zip_path, 'r') as zip_ref: zip_ref.extractall("jadx")
-            os.chmod("jadx/bin/jadx", 0o755)
-
-def decompile_apk(file_bytes, filename):
-    try:
-        setup_jadx()
-        apk_path = os.path.join(tempfile.gettempdir(), filename)
-        with open(apk_path, "wb") as f: f.write(file_bytes)
-        out_dir = os.path.join(tempfile.gettempdir(), f"jadx_out_{re.sub(r'[^a-zA-Z0-9]', '_', filename)}")
-        os.makedirs(out_dir, exist_ok=True)
-        with st.spinner(f"Extracting source from {filename}..."):
-            subprocess.run(["jadx/bin/jadx", "-d", out_dir, "-r", "--show-bad-code", apk_path], check=False)
-        zip_base_path = os.path.join(tempfile.gettempdir(), f"{filename}_source")
-        archive_path = shutil.make_archive(zip_base_path, 'zip', out_dir)
-        with open(archive_path, "rb") as f: return f.read()
-    except Exception as e:
-        st.error(f"Extraction encountered an issue: {e}")
-        return None
-
+# Initialize Session States
 for key, default in [("report_data", None), ("hunter_data", None), ("scan_mode", None), ("added_image_keys", []), ("new_data_images", {}), ("quickfacts", None), ("jadx_ready", False), ("jadx_zip_bytes", None)]:
-    if key not in st.session_state: st.session_state[key] = default
+    if key not in st.session_state:
+        st.session_state[key] = default
 
 NOISE_PATTERNS = ["androidx/", "com/google/android/", "kotlin/", "java/", "javax/", "android/support/", "org/apache/", "com/facebook/", "io/reactivex/", "Ljava/", "Lkotlin/", "Landroid/", "Landroidx/"]
 SDK_SIGNATURES = {
@@ -165,7 +222,8 @@ SECRET_PATTERNS = {
     "Google API Key": r'AIza[0-9A-Za-z\-_]{35}', "AWS Access Key ID": r'AKIA[0-9A-Z]{16}', "Stripe Live Secret Key": r'sk_live_[0-9a-zA-Z]{20,}', "Stripe Publishable Key": r'pk_live_[0-9a-zA-Z]{20,}', "Slack Token": r'xox[baprs]-[0-9A-Za-z\-]{10,}', "Firebase Realtime DB URL": r'https://[a-zA-Z0-9\-]+\.firebaseio\.com', "JWT-looking Token": r'eyJ[A-Za-z0-9_\-]{10,}\.[A-Za-z0-9_\-]{10,}\.[A-Za-z0-9_\-]{10,}',
 }
 
-def is_framework_noise(token): return any(noise in token.lower() for noise in NOISE_PATTERNS)
+def is_framework_noise(token):
+    return any(noise in token.lower() for noise in NOISE_PATTERNS)
 
 def looks_like_ui_text(s):
     if not (2 <= len(s) <= 140) or "/" in s or "\\" in s: return False
@@ -231,6 +289,15 @@ def categorize_file(lower_name):
     if lower_name.startswith("meta-inf/"): return "Signing / Metadata"
     return "Other"
 
+def scan_for_secrets(string_sets):
+    found = set()
+    for s_set in string_sets:
+        for item in list(s_set)[:2000]:
+            for sec_name, pattern in SECRET_PATTERNS.items():
+                if re.search(pattern, str(item)):
+                    found.add(f"{sec_name}: {item}")
+    return found
+
 def process_zip_archive(zip_obj, details):
     for name in zip_obj.namelist():
         info = zip_obj.getinfo(name)
@@ -253,22 +320,19 @@ def process_zip_archive(zip_obj, details):
         if lower_name.startswith("res/layout/") and lower_name.endswith(".xml"): details["layouts"].add(lower_name.split('/')[-1])
 
         try:
-            raw_bytes = zip_obj.read(name) if info.file_size < 10 * 1024 * 1024 else zip_obj.open(name).read(5 * 1024 * 1024)
+            raw_bytes = zip_obj.read(name) if info.file_size < 2 * 1024 * 1024 else zip_obj.open(name).read(2 * 1024 * 1024)
             if any(lower_name.endswith(ext) for ext in [".db", ".sqlite"]): details["db_schemas"].update(inspect_sqlite_db(raw_bytes))
             for pm in re.findall(rb'type\.googleapis\.com/[A-Za-z0-9_.-]+', raw_bytes): details["protobuf_schemas"].add(pm.decode('ascii', errors='ignore'))
             for gqm in re.findall(rb'(?:query|mutation)\s+[A-Za-z0-9_]+', raw_bytes): details["graphql_ops"].add(gqm.decode('ascii', errors='ignore'))
             for jm in re.findall(rb'Java_[A-Za-z0-9_]+', raw_bytes): details["jni_exports"].add(jm.decode('ascii', errors='ignore'))
             if lower_name.endswith(".dex"):
-                for cm in re.findall(rb'L[a-zA-Z0-9_$]+/[a-zA-Z0-9_$]+;', raw_bytes)[:150]:
+                for cm in re.findall(rb'L[a-zA-Z0-9_$]+/[a-zA-Z0-9_$]+;', raw_bytes)[:100]:
                     dec_cls = cm.decode('ascii', errors='ignore')
                     if not is_framework_noise(dec_cls): details["class_paths"].add(dec_cls)
-                for am in re.findall(rb'(?:SerializedName|Keep|Beta|Experimental|RequiresOptIn)[A-Za-z0-9_"\':\s]{2,60}', raw_bytes):
-                    try: details["annotations"].add(am.decode('ascii', errors='ignore').strip())
-                    except: pass
             details["xor_urls"].update(check_xor_obfuscation(raw_bytes))
             file_tokens = extract_strings_from_bytes(raw_bytes)
             if lower_name.endswith(".so"):
-                for token in file_tokens: details["native_strings"].add(demangle_cpp_symbol(token) if token.startswith("_Z") else token)
+                for token in list(file_tokens)[:300]: details["native_strings"].add(demangle_cpp_symbol(token) if token.startswith("_Z") else token)
             elif any(lower_name.endswith(ext) for ext in [".csv", ".json", ".proto", ".txt", ".dat", ".xml", ".properties"]): details["config_strings"].update(file_tokens)
             else: details["all_strings"].update(file_tokens)
             if lower_name.endswith("resources.arsc") or lower_name.endswith(".arsc"): details["ui_strings"].update(t for t in file_tokens if looks_like_ui_text(t))
@@ -291,16 +355,16 @@ def inspect_entire_bundle(file_bytes):
     details["locales"] = {re.search(r'values-([a-zA-Z]{2}(?:-r[A-Z]{2})?)/', f).group(1) for f in details["files"] if re.search(r'values-([a-zA-Z]{2}(?:-r[A-Z]{2})?)/', f)}
     details["signing_info"] = {f for f in details["files"] if f.lower().startswith("meta-inf/") and f.lower().endswith((".rsa", ".dsa", ".ec"))}
     details["splits"] = {re.search(r'(config\.[a-zA-Z0-9_]+|split_[a-zA-Z0-9_]+)\.apk', f).group(1) for f in details["files"] if re.search(r'(config\.[a-zA-Z0-9_]+|split_[a-zA-Z0-9_]+)\.apk', f)}
-    haystacks = [t.lower() for t in details["class_paths"]] + [t.lower() for t in list(details["config_strings"])[:3000]]
+    haystacks = [t.lower() for t in details["class_paths"]] + [t.lower() for t in list(details["config_strings"])[:2000]]
     details["third_party_sdks"] = {name for name, sigs in SDK_SIGNATURES.items() if any(any(s.lower() in h for h in haystacks) for s in sigs)}
     return details
 
 def render_quickfacts(old_data, new_data, added_image_keys, new_data_images):
     old_mb, new_mb = round(old_data["total_size"] / (1024**2), 2), round(new_data["total_size"] / (1024**2), 2)
     new_sdks = new_data["third_party_sdks"] - old_data["third_party_sdks"]
-    secrets_new = scan_for_secrets([new_data["all_strings"] - old_data["all_strings"], new_data["config_strings"] - old_data["config_strings"], new_data["native_strings"] - old_data["native_strings"]])
+    secrets_new = scan_for_secrets([new_data["all_strings"] - old_data["all_strings"], new_data["config_strings"] - old_data["config_strings"]])
 
-    st.markdown('<div class="section-label">QUICK FACTS (NO AI)</div>', unsafe_allow_html=True)
+    st.markdown('<div class="section-label">QUICK FACTS</div>', unsafe_allow_html=True)
     st.markdown(f"""
     <div class="tile-grid">
         <div class="tile"><div class="tile-val">{'+' if new_mb-old_mb >= 0 else ''}{round(new_mb-old_mb, 2)} MB</div><div class="tile-lbl">SIZE CHANGE</div></div>
@@ -309,6 +373,17 @@ def render_quickfacts(old_data, new_data, added_image_keys, new_data_images):
         <div class="tile"><div class="tile-val">{len(new_data['jni_exports'] - old_data['jni_exports'])}</div><div class="tile-lbl">NEW JNI EXPORTS</div></div>
     </div>
     """, unsafe_allow_html=True)
+
+    chips = '<div class="chip-row">'
+    if secrets_new: chips += '<span class="chip chip-warn">Possible exposed secrets found</span>'
+    else: chips += '<span class="chip chip-ok">No hardcoded secrets matched</span>'
+    chips += '</div>'
+    st.markdown(chips, unsafe_allow_html=True)
+
+    added_ui = sorted(new_data["ui_strings"] - old_data["ui_strings"])
+    if added_ui:
+        with st.expander(f"New UI Text Labels ({len(added_ui)})"):
+            for s in added_ui[:100]: st.markdown(f"- {sanitize(s)}")
 
 def render_standard_dashboard(report_data):
     st.markdown(f"""
@@ -319,18 +394,69 @@ def render_standard_dashboard(report_data):
     </div>
     <div class="report-card" style="background-color: #F3EDF7; border-left: 4px solid #6750A4;"><div class="report-card-title">AI Analysis & Executive Summary</div><div class="report-card-body">{sanitize(report_data.get("summary", ""))}</div></div>
     <div class="report-card" style="background-color: #FFD8E4; border-left: 4px solid #B12B58;"><div class="report-card-title">Unreleased Feature Blueprints</div><div class="report-card-body">{sanitize(str(report_data.get("blueprints", "")))}<div class="cmd-box">{sanitize(report_data.get("command", ""))}</div></div></div>
-    <div class="report-card" style="background-color: #FFF3E0; border-left: 4px solid #E8A33D;"><div class="report-card-title">Security & Packaging Risk</div><div class="report-card-body">{sanitize(report_data.get("security", ""))}</div></div>
+    <div class="report-card" style="background-color: #FFF3E0; border-left: 4px solid #E8A33D;"><div class="report-card-title">Security & Packaging Assessment</div><div class="report-card-body">{sanitize(report_data.get("security", ""))}</div></div>
     """, unsafe_allow_html=True)
 
 def render_hunter_dashboard(hunter_data):
     st.markdown(f'<div class="hunter-card" style="border-left: 4px solid #D0BCFF;"><div class="hunter-title">Investigative Summary</div><div style="font-size: 13.5px; color: #E6E1E5;">{sanitize(hunter_data.get("summary", ""))}</div></div>', unsafe_allow_html=True)
-    for feat in hunter_data.get("features", []):
-        st.markdown(f'<div class="hunter-card"><div class="hunter-title">{sanitize(feat.get("name", ""))}</div><div class="hunter-evidence"><b>Evidence:</b><br>{sanitize(feat.get("evidence", ""))}</div><div class="hunter-cmd">$ {sanitize(feat.get("activation", ""))}</div></div>', unsafe_allow_html=True)
+    
+    for idx, feat in enumerate(hunter_data.get("features", [])):
+        feat_name = feat.get("name", f"Feature {idx+1}")
+        cmd = feat.get("activation", "")
+        
+        st.markdown(f'''
+        <div class="hunter-card">
+            <div class="hunter-title">{sanitize(feat_name)}</div>
+            <div class="hunter-evidence"><b>Evidence:</b><br>{sanitize(feat.get("evidence", ""))}</div>
+            <div class="hunter-cmd">$ {sanitize(cmd)}</div>
+        </div>
+        ''', unsafe_allow_html=True)
+        
+        col1, col2 = st.columns(2)
+        with col1:
+            if st.button(f"⚡ Run Command", key=f"run_{idx}"):
+                with st.spinner("Executing ADB command..."):
+                    output = execute_adb_command(cmd)
+                    st.code(output, language="bash")
+        with col2:
+            if st.button(f"📸 Snap Screen & Analyze", key=f"snap_{idx}"):
+                with st.spinner("Capturing live phone screen..."):
+                    img = capture_device_screenshot()
+                    if img:
+                        st.image(img, caption="Live Device Screenshot", use_container_width=True)
+                        with st.spinner("Analyzing UI with AI Vision..."):
+                            prompt = f"Inspect this screen. Did activating the feature '{feat_name}' cause a new UI element or screen to open?"
+                            analysis = analyze_screenshot_with_vision(img, prompt, st.secrets["GROQ_API_KEY"])
+                            st.info(f"**AI Vision Verdict:**\n\n{analysis}")
 
+# ==================== MAIN UI FLOW ====================
 if st.session_state.report_data or st.session_state.hunter_data:
-    if st.session_state.quickfacts: render_quickfacts(st.session_state.quickfacts[0], st.session_state.quickfacts[1], st.session_state.added_image_keys, st.session_state.new_data_images)
-    if st.session_state.scan_mode == "hunter": st.markdown('<div class="section-label" style="color:#6750A4;">FEATURE INTEL REPORT</div>', unsafe_allow_html=True); render_hunter_dashboard(st.session_state.hunter_data)
-    else: st.markdown('<div class="section-label">AI TEARDOWN REPORT</div>', unsafe_allow_html=True); render_standard_dashboard(st.session_state.report_data)
+    if st.session_state.quickfacts:
+        render_quickfacts(st.session_state.quickfacts[0], st.session_state.quickfacts[1], st.session_state.added_image_keys, st.session_state.new_data_images)
+    
+    if st.session_state.scan_mode == "hunter":
+        st.markdown('<div class="section-label" style="color:#6750A4;">FEATURE INTEL REPORT</div>', unsafe_allow_html=True)
+        render_hunter_dashboard(st.session_state.hunter_data)
+    else:
+        st.markdown('<div class="section-label">AI TEARDOWN REPORT</div>', unsafe_allow_html=True)
+        render_standard_dashboard(st.session_state.report_data)
+
+    if st.button("Extract Java Source Code", use_container_width=True):
+        zip_bytes = decompile_apk(st.session_state.new_file_bytes, st.session_state.new_file_name)
+        if zip_bytes:
+            st.session_state.jadx_zip_bytes = zip_bytes
+            st.session_state.jadx_ready = True
+            st.rerun()
+
+    if st.session_state.jadx_ready and st.session_state.jadx_zip_bytes:
+        st.download_button(
+            label="Download Source Archive (.zip)",
+            data=st.session_state.jadx_zip_bytes,
+            file_name=f"{st.session_state.new_file_name}_java_source.zip",
+            mime="application/zip",
+            use_container_width=True
+        )
+        
     if st.button("Start New Scan", use_container_width=True):
         st.session_state.report_data = st.session_state.hunter_data = st.session_state.scan_mode = None
         st.rerun()
@@ -343,13 +469,50 @@ else:
     st.markdown('</div>', unsafe_allow_html=True)
 
     if run_standard or run_hunter:
-        if "GROQ_API_KEY" not in st.secrets or not st.secrets["GROQ_API_KEY"]: st.error("Missing GROQ_API_KEY")
-        elif not old_file or not new_file: st.error("Please upload both files.")
+        if "GROQ_API_KEY" not in st.secrets or not st.secrets["GROQ_API_KEY"]:
+            st.error("Missing GROQ_API_KEY")
+        elif not old_file or not new_file:
+            st.error("Please upload both files.")
         else:
             st.session_state.scan_mode = "hunter" if run_hunter else "standard"
-            old_data, new_data = inspect_entire_bundle(old_file.read()), inspect_entire_bundle(new_file.read())
-            st.session_state.quickfacts = (old_data, new_data)
             
+            st.session_state.new_file_bytes = new_file.read()
+            st.session_state.new_file_name = new_file.name
+            old_file.seek(0)
+            new_file.seek(0)
+
+            # RENDER RADAR ANIMATION IMMEDIATELY
+            scanner = st.empty()
+            scanner.markdown("""
+            <div class="scanner-box">
+                <div class="pulse-container">
+                    <div class="radar-ring"></div>
+                    <div class="radar-core"></div>
+                </div>
+                <div style="font-weight: 800; font-size: 16px; color: #21005D;">Decompressing Archives & Native JNI Bridges</div>
+                <div style="font-size: 13px; color: #49454F; margin-top: 4px;">Demangling C++ symbols, mapping GraphQL & ProtoBufs...</div>
+            </div>
+            """, unsafe_allow_html=True)
+            
+            # Tiny delay forces Streamlit web socket to render the animation before CPU processing starts
+            time.sleep(0.1)
+
+            old_data = inspect_entire_bundle(old_file.read())
+            new_data = inspect_entire_bundle(st.session_state.new_file_bytes)
+            st.session_state.quickfacts = (old_data, new_data)
+
+            scanner.markdown("""
+            <div class="scanner-box">
+                <div class="pulse-container">
+                    <div class="radar-ring" style="border-color: #D0BCFF;"></div>
+                    <div class="radar-core" style="background: #D0BCFF;"></div>
+                </div>
+                <div style="font-weight: 800; font-size: 16px; color: #21005D;">Synthesizing AI Feature Intel</div>
+                <div style="font-size: 13px; color: #49454F; margin-top: 4px;">Correlating UI text, layout schemas, and flags...</div>
+            </div>
+            """, unsafe_allow_html=True)
+            time.sleep(0.1)
+
             diff_summary = f"""
             SIZE CHANGE: {round(new_data["total_size"]/(1024**2) - old_data["total_size"]/(1024**2), 2)} MB
             NEW LAYOUTS: {list(new_data["layouts"] - old_data["layouts"])[:20]}
@@ -363,7 +526,7 @@ else:
                 prompt = f"""
                 You are an investigative mobile app software journalist finding hidden features in an APK diff.
                 Correlate the provided layouts, UI text, and feature flags to deduce unreleased features.
-                CRITICAL INSTRUCTION: You MUST output perfectly valid JSON. NEVER use double quotes (") inside your JSON text values. Use single quotes (') instead to prevent parsing crashes. Do not nest quotes.
+                CRITICAL INSTRUCTION: Output perfectly valid JSON. NEVER use double quotes (") inside JSON text values. Use single quotes (') instead.
 
                 JSON Schema required:
                 {{
@@ -383,8 +546,7 @@ else:
             else:
                 prompt = f"""
                 You are a lead mobile software investigator analyzing an APK diff.
-                CRITICAL INSTRUCTION: You MUST output perfectly valid JSON. NEVER use double quotes (") inside your JSON text values. Use single quotes (') instead to prevent parsing crashes. Do not nest quotes.
-                Do NOT label standard WebRTC audio/video features or bitrate config keys as security risks. Say 'No security risks detected.' unless actual exposed secrets exist.
+                CRITICAL INSTRUCTION: Output perfectly valid JSON. NEVER use double quotes (") inside JSON text values. Use single quotes (') instead.
 
                 JSON Schema required:
                 {{
@@ -400,13 +562,20 @@ else:
 
             try:
                 comp = client.chat.completions.create(
-                    model="llama-3.1-8b-instant", messages=[{"role": "user", "content": prompt}],
-                    temperature=0.1, max_tokens=1000, response_format={"type": "json_object"}
+                    model="llama-3.1-8b-instant",
+                    messages=[{"role": "user", "content": prompt}],
+                    temperature=0.1,
+                    max_tokens=1000,
+                    response_format={"type": "json_object"}
                 )
                 res = json.loads(clean_json_response(comp.choices[0].message.content.strip()))
-                if run_hunter: st.session_state.hunter_data = res
+                if run_hunter:
+                    st.session_state.hunter_data = res
                 else:
                     res["size_diff_mb"] = round(new_data["total_size"]/(1024**2) - old_data["total_size"]/(1024**2), 2)
                     st.session_state.report_data = res
+                scanner.empty()
                 st.rerun()
-            except Exception as e: st.error(f"Analysis error: {e}")
+            except Exception as e:
+                scanner.empty()
+                st.error(f"Analysis error: {e}")
