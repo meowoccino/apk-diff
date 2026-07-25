@@ -14,7 +14,7 @@ st.set_page_config(page_title="APK Teardown Studio", page_icon="⚡", layout="ce
 # Material Design 3 Styling
 st.markdown("""
 <style>
-    /* Hide top header, toolbar, footer, and Streamlit clutter */
+    /* Completely hide top header, toolbar, footer, and owner overlay buttons */
     [data-testid="stHeader"], 
     [data-testid="stToolbar"], 
     [data-testid="stDecoration"], 
@@ -30,14 +30,15 @@ st.markdown("""
         padding: 0px !important;
     }
 
-    /* Force content to start right at the top on mobile */
+    /* Force content to start right at the top of mobile screens */
     .main .block-container {
-        padding-top: 0.5rem !important;
+        padding-top: 0rem !important;
+        margin-top: 0rem !important;
         padding-bottom: 2rem !important;
         max-width: 500px !important;
     }
 
-    /* Global MD3 Surface Palette */
+    /* Global Surface Palette */
     .stApp {
         background-color: #FEF7FF;
         color: #1D1B20;
@@ -48,25 +49,26 @@ st.markdown("""
     .hero-card {
         background-color: #F3EDF7;
         border: 1px solid #E7E0EC;
-        border-radius: 24px;
-        padding: 20px 18px;
-        margin-bottom: 16px;
-        box-shadow: 0 2px 6px rgba(0,0,0,0.04);
+        border-radius: 20px;
+        padding: 16px 16px;
+        margin-top: 4px;
+        margin-bottom: 12px;
+        box-shadow: 0 1px 4px rgba(0,0,0,0.03);
     }
 
     .hero-title-row {
         display: flex;
         align-items: center;
-        gap: 12px;
-        margin-bottom: 6px;
+        gap: 10px;
+        margin-bottom: 4px;
     }
 
     .icon-badge {
         background-color: #EADDFF;
         color: #21005D;
-        width: 42px;
-        height: 42px;
-        border-radius: 12px;
+        width: 38px;
+        height: 38px;
+        border-radius: 10px;
         display: flex;
         align-items: center;
         justify-content: center;
@@ -74,71 +76,62 @@ st.markdown("""
     }
 
     .hero-title {
-        font-size: 20px;
+        font-size: 19px;
         font-weight: 700;
         color: #1D1B20;
         line-height: 1.2;
     }
 
     .hero-sub {
-        font-size: 13px;
+        font-size: 12px;
         color: #49454F;
         line-height: 1.4;
-        margin-top: 4px;
+        margin-top: 2px;
     }
 
-    /* Custom Text Input Styling */
-    div[data-testid="stTextInput"] > div > div {
-        background-color: #F3EDF7 !important;
-        border: 1px solid #79747E !important;
-        border-radius: 16px !important;
-        color: #1D1B20 !important;
-    }
-
-    /* File Uploaders - Rounded MD3 Card Look */
+    /* File Uploaders */
     div[data-testid="stFileUploader"] {
         background-color: #F3EDF7 !important;
         border: 1px dashed #938F99 !important;
-        border-radius: 20px !important;
-        padding: 10px !important;
+        border-radius: 16px !important;
+        padding: 6px !important;
     }
 
-    /* Primary MD3 Pill Button */
+    /* Primary MD3 Button */
     div.stButton > button {
         background: #6750A4 !important;
         color: #FFFFFF !important;
         border: none !important;
         border-radius: 100px !important;
-        padding: 12px 24px !important;
+        padding: 12px 20px !important;
         font-size: 15px !important;
         font-weight: 600 !important;
-        letter-spacing: 0.2px !important;
-        box-shadow: 0 2px 6px rgba(103, 80, 164, 0.3) !important;
+        box-shadow: 0 2px 6px rgba(103, 80, 164, 0.25) !important;
         transition: all 0.2s ease-in-out !important;
+        margin-top: 6px;
     }
 
     div.stButton > button:hover, div.stButton > button:active {
         background: #503E81 !important;
         transform: translateY(-1px) !important;
-        box-shadow: 0 4px 10px rgba(103, 80, 164, 0.4) !important;
     }
 
-    /* Scanner Progress Card */
+    /* Scanner Animation Card */
     .scanner-box {
         background: linear-gradient(135deg, #21005D 0%, #6750A4 100%);
         color: #FFFFFF;
-        padding: 24px 20px;
-        border-radius: 28px;
+        padding: 20px 16px;
+        border-radius: 20px;
         text-align: center;
-        margin-bottom: 20px;
-        box-shadow: 0 6px 16px rgba(33, 0, 93, 0.25);
+        margin-top: 10px;
+        margin-bottom: 16px;
     }
 
     .pulse-ring {
-        width: 44px;
-        height: 44px;
-        margin: 0 auto 12px auto;
-        border: 4px solid #EADDFF;
+        width: 36px;
+        height: 36px;
+        margin: 0 auto 10px auto;
+        border: 3px solid #EADDFF;
         border-radius: 50%;
         animation: pulse 1.2s infinite ease-in-out;
     }
@@ -241,7 +234,6 @@ def process_zip_archive(zip_obj, details):
     for name in zip_obj.namelist():
         info = zip_obj.getinfo(name)
         
-        # Handle split APKs nested inside XAPK/APKS archives
         if name.endswith('.apk') and name != zip_obj.filename:
             try:
                 sub_apk_bytes = zip_obj.read(name)
@@ -259,7 +251,6 @@ def process_zip_archive(zip_obj, details):
         
         lower_name = name.lower()
         
-        # Image previews
         if any(lower_name.endswith(ext) for ext in ['.png', '.webp', '.jpg']) and info.file_size < 300 * 1024:
             if not any(ignore in lower_name for ignore in ["icon", "launcher", "splash"]):
                 try:
@@ -270,27 +261,22 @@ def process_zip_archive(zip_obj, details):
         try:
             raw_bytes = zip_obj.read(name) if info.file_size < 10 * 1024 * 1024 else zip_obj.open(name).read(5 * 1024 * 1024)
             
-            # SQLite Databases
             if any(lower_name.endswith(ext) for ext in [".db", ".sqlite"]):
                 db_tables = inspect_sqlite_db(raw_bytes)
                 details["db_schemas"].update(db_tables)
 
-            # ProtoBuf Schemas
             proto_matches = re.findall(rb'type\.googleapis\.com/[A-Za-z0-9_.-]+', raw_bytes)
             for pm in proto_matches:
                 details["protobuf_schemas"].add(pm.decode('ascii', errors='ignore'))
 
-            # GraphQL Queries & Mutations
             graphql_matches = re.findall(rb'(?:query|mutation)\s+[A-Za-z0-9_]+', raw_bytes)
             for gqm in graphql_matches:
                 details["graphql_ops"].add(gqm.decode('ascii', errors='ignore'))
 
-            # JNI Native Bridge Methods (Java_...)
             jni_matches = re.findall(rb'Java_[A-Za-z0-9_]+', raw_bytes)
             for jm in jni_matches:
                 details["jni_exports"].add(jm.decode('ascii', errors='ignore'))
 
-            # Bytecode Class Paths
             if lower_name.endswith(".dex"):
                 class_matches = re.findall(rb'L[a-zA-Z0-9_$]+/[a-zA-Z0-9_$]+;', raw_bytes)
                 for cm in class_matches[:100]:
@@ -298,7 +284,6 @@ def process_zip_archive(zip_obj, details):
                     if not is_framework_noise(decoded_cls):
                         details["class_paths"].add(decoded_cls)
 
-                # DEX Annotations
                 anno_matches = re.findall(rb'(?:SerializedName|Keep|Beta|Experimental|RequiresOptIn)[A-Za-z0-9_"\':\s]{2,60}', raw_bytes)
                 for am in anno_matches:
                     try:
@@ -306,13 +291,11 @@ def process_zip_archive(zip_obj, details):
                     except Exception:
                         pass
 
-            # XOR Obfuscation Sweep
             xor_found = check_xor_obfuscation(raw_bytes)
             details["xor_urls"].update(xor_found)
 
             file_tokens = extract_strings_from_bytes(raw_bytes)
             
-            # C++ Demangled Symbols
             if lower_name.endswith(".so"):
                 for token in file_tokens:
                     if token.startswith("_Z"):
@@ -325,7 +308,6 @@ def process_zip_archive(zip_obj, details):
             else:
                 details["all_strings"].update(file_tokens)
 
-            # Categorize Android components
             for token in file_tokens:
                 token_lower = token.lower()
                 if "permission." in token_lower:
@@ -377,7 +359,7 @@ if st.session_state.report_html:
     col_a, col_b = st.columns([3, 1])
     with col_a:
         st.markdown("""
-        <div style="font-size: 20px; font-weight: 700; color: #1D1B20; margin-bottom: 4px;">📊 Deep Teardown Report</div>
+        <div style="font-size: 19px; font-weight: 700; color: #1D1B20; margin-top: 4px;">Deep Teardown Report</div>
         """, unsafe_allow_html=True)
     with col_b:
         if st.button("↩️ Re-scan", use_container_width=True):
@@ -387,7 +369,7 @@ if st.session_state.report_html:
             st.rerun()
 
     if st.session_state.added_image_keys:
-        with st.expander("🖼️ View Added Visual Asset Previews", expanded=False):
+        with st.expander("View Added Graphic Previews", expanded=False):
             img_cols = st.columns(min(len(st.session_state.added_image_keys[:4]), 4))
             for idx, img_key in enumerate(st.session_state.added_image_keys[:4]):
                 with img_cols[idx]:
@@ -398,35 +380,15 @@ if st.session_state.report_html:
                         pass
 
     st.markdown(st.session_state.report_html, unsafe_allow_html=True)
-    
-    st.markdown("---")
-    
-    col_exp1, col_exp2 = st.columns(2)
-    with col_exp1:
-        st.download_button(
-            label="📥 Download HTML Report",
-            data=st.session_state.report_html,
-            file_name="apk_teardown_report.html",
-            mime="text/html",
-            use_container_width=True
-        )
-    with col_exp2:
-        st.subheader("📋 One-Tap Text Copy")
-        
-    st.text_area(
-        "Copy raw text below for Telegram, Reddit, or forum posts:", 
-        value=re.sub('<[^<]+?>', '', st.session_state.report_html), 
-        height=120
-    )
 
 # ==================== MAIN INPUT VIEW ====================
 else:
-    # Modern Header Component
+    # Modern Vector Header Component
     st.markdown("""
     <div class="hero-card">
         <div class="hero-title-row">
             <div class="icon-badge">
-                <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#21005D" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+                <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#21005D" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
                     <rect x="5" y="2" width="14" height="20" rx="3" ry="3"></rect>
                     <line x1="12" y1="18" x2="12.01" y2="18"></line>
                     <path d="M9 6h6"></path>
@@ -434,14 +396,9 @@ else:
             </div>
             <div class="hero-title">APK Teardown Studio</div>
         </div>
-        <div class="hero-sub">Deep binary scanner: Inspects C++ JNI exports, GraphQL, ProtoBufs, class diffs, databases, and split bundles.</div>
+        <div class="hero-sub">Scans C++ JNI exports, GraphQL, ProtoBufs, DEX class diffs, databases, and split bundles.</div>
     </div>
     """, unsafe_allow_html=True)
-
-    custom_keywords = st.text_input(
-        "🎯 Custom Search / Keyword Hunt (Optional):", 
-        placeholder="e.g. dark_mode, season_2, pass, ai_tool, event"
-    )
 
     col1, col2 = st.columns(2)
     with col1:
@@ -449,7 +406,7 @@ else:
     with col2:
         new_file = st.file_uploader("New Version (.apk, .aab, .xapk, .apks)", type=["apk", "aab", "xapk", "apks", "zip"])
 
-    if st.button("🚀 Run Deep Package Teardown", type="primary", use_container_width=True):
+    if st.button("Run Deep Package Teardown", type="primary", use_container_width=True):
         if "GROQ_API_KEY" not in st.secrets or not st.secrets["GROQ_API_KEY"]:
             st.error("GROQ_API_KEY is missing from Streamlit Secrets!")
         elif not old_file or not new_file:
@@ -460,8 +417,8 @@ else:
             scanner_placeholder.markdown("""
             <div class="scanner-box">
                 <div class="pulse-ring"></div>
-                <div style="font-weight: 700; font-size: 16px;">Parsing Archives & Native JNI Bridges...</div>
-                <div style="font-size: 12px; opacity: 0.85; margin-top: 6px;">Demangling C++ symbols, mapping GraphQL queries & ProtoBufs...</div>
+                <div style="font-weight: 700; font-size: 15px;">Parsing Archives & Native JNI Bridges...</div>
+                <div style="font-size: 12px; opacity: 0.85; margin-top: 4px;">Demangling C++ symbols, mapping GraphQL queries & ProtoBufs...</div>
             </div>
             """, unsafe_allow_html=True)
             
@@ -474,8 +431,8 @@ else:
             scanner_placeholder.markdown("""
             <div class="scanner-box">
                 <div class="pulse-ring"></div>
-                <div style="font-weight: 700; font-size: 16px;">Diffing Bytecode Classes & XOR Sweeps...</div>
-                <div style="font-size: 12px; opacity: 0.85; margin-top: 6px;">Correlating unreleased flags, annotations, and database tables...</div>
+                <div style="font-weight: 700; font-size: 15px;">Diffing Bytecode Classes & XOR Sweeps...</div>
+                <div style="font-size: 12px; opacity: 0.85; margin-top: 4px;">Correlating unreleased flags, annotations, and database tables...</div>
             </div>
             """, unsafe_allow_html=True)
             
@@ -508,48 +465,39 @@ else:
             size_diff_mb = round(new_size_mb - old_size_mb, 2)
             
             combined_diffs = added_native + added_configs + added_general + added_annotations + added_jni
-            
-            target_matches = []
-            if custom_keywords.strip():
-                user_terms = [t.strip().lower() for t in custom_keywords.split(",") if t.strip()]
-                target_matches = [token for token in combined_diffs if any(term in token.lower() for term in user_terms)]
-
             feature_toggles = [t for t in combined_diffs if any(k in t.lower() for k in ['flag', 'enable', 'config', 'opt', 'toggle', 'experiment', 'beta'])]
             
             diff_summary = f"""
             OLD PACKAGE: {old_file.name} ({old_size_mb} MB)
             NEW PACKAGE: {new_file.name} ({new_size_mb} MB) | SIZE CHANGE: {size_diff_mb} MB
             
-            === 1. TARGET KEYWORD MATCHES ({len(target_matches)}) ===
-            {target_matches[:30]}
-            
-            === 2. FEATURE TOGGLES & ANNOTATIONS ===
+            === 1. FEATURE TOGGLES & ANNOTATIONS ===
             FLAGS ({len(feature_toggles)}): {feature_toggles[:30]}
             ANNOTATIONS ({len(added_annotations)}): {added_annotations[:20]}
             
-            === 3. JNI NATIVE C++ BRIDGES & SYMBOLS ===
+            === 2. JNI NATIVE C++ BRIDGES & SYMBOLS ===
             JNI EXPORTS ({len(added_jni)}): {added_jni[:25]}
             DEMANGLED C++ SYMBOLS ({len(added_native)}): {added_native[:30]}
             
-            === 4. GRAPHQL, PROTOBUFS & DATABASES ===
+            === 3. GRAPHQL, PROTOBUFS & DATABASES ===
             GRAPHQL QUERIES ({len(added_graphql)}): {added_graphql[:20]}
             PROTOBUFS ({len(added_protobufs)}): {added_protobufs[:20]}
             DB TABLES ({len(added_dbs)}): {added_dbs[:15]}
             
-            === 5. BYTECODE CLASS HIERARCHY DIFFS ({len(added_classes)}) ===
+            === 4. BYTECODE CLASS HIERARCHY DIFFS ({len(added_classes)}) ===
             {added_classes[:30]}
             
-            === 6. SERVER ENDPOINTS & DEEP LINKS ===
+            === 5. SERVER ENDPOINTS & DEEP LINKS ===
             ENDPOINTS ({len(added_endpoints)}): {added_endpoints[:20]}
             XOR DECODED ENDPOINTS ({len(added_xor)}): {added_xor[:15]}
             SCHEMES ({len(added_deep_links)}): {added_deep_links[:20]}
             
-            === 7. NEW SCREENS & BACKGROUND SERVICES ===
+            === 6. NEW SCREENS & BACKGROUND SERVICES ===
             ACTIVITIES ({len(added_activities)}): {added_activities[:20]}
             SERVICES ({len(added_services)}): {added_services[:20]}
             PERMISSIONS ({len(added_permissions)}): {added_permissions[:15]}
             
-            === 8. FILE PATH DIFFS ===
+            === 7. FILE PATH DIFFS ===
             ADDED FILES ({len(added_files)}): {added_files[:20]}
             REMOVED FILES ({len(removed_files)}): {removed_files[:20]}
             """
@@ -557,33 +505,31 @@ else:
             scanner_placeholder.markdown("""
             <div class="scanner-box">
                 <div class="pulse-ring"></div>
-                <div style="font-weight: 700; font-size: 16px;">Querying Groq AI Engine...</div>
-                <div style="font-size: 12px; opacity: 0.85; margin-top: 6px;">Generating Material Design 3 dashboard...</div>
+                <div style="font-weight: 700; font-size: 15px;">Querying Groq AI Engine...</div>
+                <div style="font-size: 12px; opacity: 0.85; margin-top: 4px;">Building Material Design 3 report dashboard...</div>
             </div>
             """, unsafe_allow_html=True)
             
             client = Groq(api_key=st.secrets["GROQ_API_KEY"])
             
             prompt = f"""
-            You are a lead tech journalist and mobile software investigator conducting a complete APK/AAB/XAPK Teardown.
-            Examine the provided package diffs (including JNI native exports, GraphQL queries, ProtoBuf schemas, class hierarchy additions, SQLite tables, DEX annotations, and XOR endpoints).
-            Format your response into a clean, modern Material Design 3 (MD3) report dashboard.
+            You are a lead tech journalist conducting a complete APK/AAB Teardown.
+            Analyze these package diffs and format your response into a clean, modern Material Design 3 (MD3) dashboard.
 
-            Output strictly raw, clean HTML with inline CSS styled according to MD3 guidelines.
-            Do NOT wrap your output in markdown codeblocks (do NOT use ```html or ```).
+            Output strictly raw, clean HTML with inline CSS. Do NOT wrap in markdown codeblocks (do NOT use ```html or ```).
             
-            Styling rules for modern dashboard cards:
-            - Top Metric Chips Row: Display pills using `display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 16px;` with background `#EADDFF` and color `#21005D`.
-            - Accent Card Style: background-color: #F7F2FA; border-radius: 18px; padding: 16px; margin-bottom: 16px; border-left: 5px solid #6750A4; border-top: 1px solid #CAC4D0; border-right: 1px solid #CAC4D0; border-bottom: 1px solid #CAC4D0;
-            - Spotlight Leak Card: background-color: #FFD8E4; color: #31111D; border-radius: 18px; padding: 16px; margin-bottom: 16px; border-left: 5px solid #B12B58;
-            - Terminal / Command Blocks: background-color: #1D1B20; color: #E6E1E5; padding: 10px 14px; border-radius: 10px; font-family: monospace; font-size: 11px; word-break: break-all; margin-top: 8px; border-left: 3px solid #6750A4;
-            
-            Your report MUST include:
-            1. **Top Metric Chips Row**: Highlighting Size Change, Impact Rating (e.g. 9/10), New Flags Count, and Native JNI Bridge Count.
-            2. **Target Keyword Findings**: If custom keywords were found, detail them prominently at the top.
-            3. **Executive Teardown Verdict**: Comprehensive synthesis explaining unreleased features, JNI C++ code bridges, and GraphQL/ProtoBuf backend updates.
-            4. **Unreleased Clues & Mobile Shell Commands**: Detail upcoming feature clues, followed by individual, copyable ADB shell commands inside dark terminal boxes (`adb shell device_config put...` or `adb shell am start...`).
-            5. **Deep Technical Audits**: Highlight JNI bridges, GraphQL queries, XOR/server endpoints, new database tables, and permissions.
+            Styling rules:
+            - Metric Pills Row: flex gap:6px, flex-wrap, margin-bottom:12px. Pills use background `#EADDFF`, text `#21005D`, padding `4px 10px`, border-radius `100px`, font-size `11px`, font-weight `bold`.
+            - AI Summary Card: background-color: #EADDFF; color: #21005D; border-radius: 16px; padding: 14px; margin-bottom: 12px; border-left: 4px solid #6750A4;
+            - Unreleased Blueprint Card: background-color: #FFD8E4; color: #31111D; border-radius: 16px; padding: 14px; margin-bottom: 12px; border-left: 4px solid #B12B58;
+            - Raw Package Changes Card: background-color: #F7F2FA; color: #1D1B20; border-radius: 16px; padding: 14px; margin-bottom: 12px; border: 1px solid #CAC4D0; border-left: 4px solid #79747E;
+            - Terminal / Command Blocks: background-color: #1D1B20; color: #E6E1E5; padding: 8px 12px; border-radius: 8px; font-family: monospace; font-size: 11px; word-break: break-all; margin-top: 6px;
+
+            Your report MUST include strictly these 3 cards:
+            1. **Top Metric Chips**: Size Change, Impact Rating (e.g. 9/10), New Flags Count, and Native JNI Bridge Count.
+            2. **Card 1 - AI Analysis & Executive Summary**: A clean synthesis of what feature updates or architectural changes developers are preparing based on the diffs.
+            3. **Card 2 - Unreleased Feature Blueprints**: Specific unreleased feature predictions, accompanied by copyable ADB shell commands in terminal blocks.
+            4. **Card 3 - Exact Package Changes**: Clearly listed raw diffs (JNI methods, ProtoBuf schemas, GraphQL queries, endpoints, classes, services, and permissions) with bullet points so technical diffs are obvious.
 
             RAW CATEGORIZED PACKAGE DIFF DATA:
             {diff_summary}
@@ -593,7 +539,7 @@ else:
                 completion = client.chat.completions.create(
                     model="llama-3.3-70b-versatile",
                     messages=[{"role": "user", "content": prompt}],
-                    temperature=0.3
+                    temperature=0.0
                 )
                 
                 output_html = completion.choices[0].message.content
