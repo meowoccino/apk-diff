@@ -1208,20 +1208,21 @@ else:
                 </div>
                 """, unsafe_allow_html=True)
 
+                # Trimmed arrays for Standard Scan to fit within the 6,000 TPM limit of the Groq free tier
                 diff_summary = f"""
                 SIZE CHANGE: {size_diff_mb} MB
-                FEATURE FLAGS: {feature_toggles[:150]}
-                JNI EXPORTS: {added_jni[:100]}
-                DEMANGLED C++ SYMBOLS: {added_native[:100]}
-                GRAPHQL: {added_graphql[:100]}
-                PROTOBUFS: {added_protobufs[:100]}
-                CLASSES: {added_classes[:100]}
-                ENDPOINTS: {added_endpoints[:100]}
-                PERMISSIONS: {added_permissions[:50]}
+                FEATURE FLAGS: {feature_toggles[:60]}
+                JNI EXPORTS: {added_jni[:40]}
+                DEMANGLED C++ SYMBOLS: {added_native[:40]}
+                GRAPHQL: {added_graphql[:40]}
+                PROTOBUFS: {added_protobufs[:40]}
+                CLASSES: {added_classes[:40]}
+                ENDPOINTS: {added_endpoints[:40]}
+                PERMISSIONS: {added_permissions[:30]}
                 NEW SDKS: {added_sdks}
                 REMOVED SDKS: {removed_sdks}
-                SECRETS: {secrets_found[:50]}
-                NEW UI COPY: {added_ui_strings[:150]}
+                SECRETS: {secrets_found[:30]}
+                NEW UI COPY: {added_ui_strings[:80]}
                 """
 
                 prompt = f"""
@@ -1244,11 +1245,12 @@ else:
                 """
 
                 try:
+                    # Switch to 70B model to utilize a separate rate limit bucket
                     completion = client.chat.completions.create(
-                        model="llama-3.1-8b-instant",
+                        model="llama3-70b-8192", 
                         messages=[{"role": "user", "content": prompt}],
                         temperature=0.0,
-                        max_tokens=2500,
+                        max_tokens=1500,
                     )
                     raw_res = completion.choices[0].message.content.strip()
                     cleaned = clean_json_response(raw_res)
