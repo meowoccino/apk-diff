@@ -75,7 +75,4 @@ This app is designed to run smoothly on Streamlit Cloud, making it fully accessi
 * **JADX Execution:** The app downloads a lightweight, standalone JADX binary on the fly to decompile the code.
 
 
-**Who is this for?**
-* **Tech Enthusiasts:** Uncover hidden changes and unreleased features.
-* **Journalists:** Spot teardown clues and track major app updates.
-* **Developers:** Inspect architectural shifts, native bridges, and SDK additions.
+> Built for tech enthusiasts, journalists, and developers looking to keep an eye on app updates.
