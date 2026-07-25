@@ -98,7 +98,7 @@ st.markdown("""
     .section-label {
         font-size: 11px; font-weight: 700; letter-spacing: 0.05em;
         color: #6750A4; text-transform: uppercase;
-        margin: 12px 4px 8px 4px; /* Reduced gap */
+        margin: 12px 4px 8px 4px;
     }
 
     /* ---- Native File Upload Cards ---- */
@@ -190,7 +190,7 @@ st.markdown("""
     .tile-val { font-size: 16px; font-weight: 800; color: #21005D; }
     .tile-lbl { font-size: 10px; color: #6F6A76; font-weight: 600; margin-top: 2px; }
 
-    .chip-row { display: flex; gap: 6px; flex-wrap: wrap; margin: 8px 0 18px 0; }
+    .chip-row { display: flex; gap: 6px; flex-wrap: wrap; margin: 8px 0 14px 0; }
     .chip {
         background: #F3EDF7; color: #21005D;
         font-size: 11px; font-weight: 600;
@@ -572,7 +572,7 @@ def inspect_entire_bundle(file_bytes):
     details["third_party_sdks"] = detect_third_party_sdks(details["class_paths"], details["config_strings"])
     return details
 
-def render_quickfacts(old_data, new_data):
+def render_quickfacts(old_data, new_data, added_image_keys, new_data_images):
     old_size_mb = round(old_data["total_size"] / (1024 * 1024), 2)
     new_size_mb = round(new_data["total_size"] / (1024 * 1024), 2)
     size_diff = round(new_size_mb - old_size_mb, 2)
@@ -600,22 +600,43 @@ def render_quickfacts(old_data, new_data):
     """
     st.markdown(tiles, unsafe_allow_html=True)
 
+    # COMBINED CHIPS ROW FOR ARCHITECTURES & SECRETS
     chips = '<div class="chip-row">'
-    for a in sorted(new_archs): chips += f'<span class="chip">New arch: {sanitize(a)}</span>'
-    for l in sorted(new_locales)[:8]: chips += f'<span class="chip">New locale: {sanitize(l)}</span>'
-    for s in sorted(new_splits): chips += f'<span class="chip">Split: {sanitize(s)}</span>'
+    
+    # Part 1: Architecture/Locales/Splits
     if not new_archs and not new_locales and not new_splits:
         chips += '<span class="chip">No new architectures / locales / splits</span>'
+    else:
+        for a in sorted(new_archs): chips += f'<span class="chip">New arch: {sanitize(a)}</span>'
+        for l in sorted(new_locales)[:8]: chips += f'<span class="chip">New locale: {sanitize(l)}</span>'
+        for s in sorted(new_splits): chips += f'<span class="chip">Split: {sanitize(s)}</span>'
+        
+    # Part 2: Secrets
+    if secrets_new:
+        chips += '<span class="chip chip-warn">Possible exposed secrets found</span>'
+    else:
+        chips += '<span class="chip chip-ok">No hardcoded secrets matched</span>'
+        
     chips += '</div>'
     st.markdown(chips, unsafe_allow_html=True)
 
+    # SECRETS EXPANDER (if warning applies)
     if secrets_new:
-        st.markdown('<div class="chip-row"><span class="chip chip-warn">Possible exposed secrets found</span></div>', unsafe_allow_html=True)
         with st.expander(f"Potential exposed secrets ({len(secrets_new)})"):
             for s in sorted(secrets_new):
                 st.markdown(f'<div class="mono-block">{sanitize(s)}</div>', unsafe_allow_html=True)
-    else:
-        st.markdown('<div class="chip-row" style="margin-bottom: 20px;"><span class="chip chip-ok">No hardcoded secrets matched</span></div>', unsafe_allow_html=True)
+
+    # GRAPHIC PREVIEWS EXPANDER
+    if added_image_keys:
+        with st.expander("Newly Added Graphic Previews"):
+            img_cols = st.columns(min(len(added_image_keys[:4]), 4))
+            for idx, img_key in enumerate(added_image_keys[:4]):
+                with img_cols[idx]:
+                    try:
+                        image = Image.open(io.BytesIO(new_data_images[img_key]))
+                        st.image(image, caption=img_key[:15], width=70)
+                    except Exception:
+                        pass
 
     with st.expander("Third-party SDK ecosystem"):
         if new_sdks:
@@ -726,25 +747,14 @@ def render_quickfacts(old_data, new_data):
 
 # ==================== FULLSCREEN REPORT VIEW ====================
 if st.session_state.report_html:
-    if st.session_state.added_image_keys:
-        with st.expander("Newly Added Graphic Previews", expanded=False):
-            img_cols = st.columns(min(len(st.session_state.added_image_keys[:4]), 4))
-            for idx, img_key in enumerate(st.session_state.added_image_keys[:4]):
-                with img_cols[idx]:
-                    try:
-                        image = Image.open(io.BytesIO(st.session_state.new_data_images[img_key]))
-                        st.image(image, caption=img_key[:15], width=70)
-                    except Exception:
-                        pass
-
     if st.session_state.quickfacts:
         old_q, new_q = st.session_state.quickfacts
-        render_quickfacts(old_q, new_q)
+        render_quickfacts(old_q, new_q, st.session_state.added_image_keys, st.session_state.new_data_images)
 
     st.markdown('<div class="section-label">AI TEARDOWN REPORT</div>', unsafe_allow_html=True)
     st.markdown(st.session_state.report_html, unsafe_allow_html=True)
     
-    st.markdown("<div style='height: 16px;'></div>", unsafe_allow_html=True) # Fills the gap cleanly
+    st.markdown("<div style='height: 16px;'></div>", unsafe_allow_html=True)
     if st.button("Extract Java Source Code", use_container_width=True):
         zip_bytes = decompile_apk(st.session_state.new_file_bytes, st.session_state.new_file_name)
         if zip_bytes:
@@ -858,7 +868,6 @@ else:
             new_size_mb = round(new_data["total_size"] / (1024 * 1024), 2)
             size_diff_mb = round(new_size_mb - old_size_mb, 2)
 
-            # INCREASED AI DATA LIMITS (Providing 3-4x more context safely)
             combined_diffs = added_native[:60] + added_configs[:60] + added_general[:60] + added_annotations[:40] + added_jni[:40]
             feature_toggles = list(set([t for t in combined_diffs if any(k in t.lower() for k in ['flag', 'enable', 'config', 'opt', 'toggle', 'experiment', 'beta'])]))
 
