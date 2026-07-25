@@ -130,7 +130,7 @@ st.markdown("""
         transform: scale(0.98) !important;
     }
 
-    /* ---- Native Native Expanders ---- */
+    /* ---- Native Expanders ---- */
     [data-testid="stExpander"] {
         background-color: #FFFFFF !important;
         border: 1px solid #E7E0EC !important;
@@ -143,43 +143,40 @@ st.markdown("""
     [data-testid="stExpander"] summary p { font-weight: 600 !important; color: #1D1B20 !important; font-size: 14px !important; }
     [data-testid="stExpander"] summary:hover { background-color: #F8F9FA !important; }
 
-    /* ---- Native Shimmer Loading Card ---- */
-    .shimmer-card {
+    /* ---- Modern Multi-Wave Radar Animation ---- */
+    .scanner-box {
         background: #FFFFFF;
+        color: #21005D;
+        padding: 24px 16px;
+        border-radius: 24px;
+        text-align: center;
+        margin-top: 10px;
+        margin-bottom: 16px;
         border: 1px solid #E7E0EC;
-        border-radius: 16px;
-        padding: 16px;
-        margin: 12px 0;
-        box-shadow: 0 2px 8px rgba(0,0,0,0.04);
-        display: flex;
-        align-items: center;
-        gap: 16px;
+        box-shadow: 0 4px 16px rgba(103,80,164,0.08);
     }
-    .shimmer-icon {
-        width: 42px; height: 42px;
-        border-radius: 12px;
-        background: #F3EDF7;
-        animation: shimmer 1.5s infinite linear;
+    .pulse-container {
+        position: relative;
+        width: 48px; height: 48px;
+        margin: 0 auto 12px auto;
+        display: flex; align-items: center; justify-content: center;
     }
-    .shimmer-content { flex: 1; }
-    .shimmer-line-1 {
-        height: 12px; width: 60%;
-        background: #F3EDF7;
-        border-radius: 6px;
-        margin-bottom: 8px;
-        animation: shimmer 1.5s infinite linear;
+    .radar-ring {
+        position: absolute;
+        width: 100%; height: 100%;
+        border: 3px solid #6750A4;
+        border-top-color: transparent;
+        border-radius: 50%;
+        animation: spin 0.9s infinite linear;
     }
-    .shimmer-line-2 {
-        height: 10px; width: 40%;
-        background: #F3EDF7;
-        border-radius: 6px;
-        animation: shimmer 1.5s infinite linear;
+    .radar-core {
+        width: 18px; height: 18px;
+        background: #6750A4;
+        border-radius: 50%;
+        animation: pulse-core 1.2s infinite ease-in-out;
     }
-    @keyframes shimmer {
-        0% { opacity: 0.4; }
-        50% { opacity: 1; }
-        100% { opacity: 0.4; }
-    }
+    @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
+    @keyframes pulse-core { 0% { transform: scale(0.8); opacity: 0.7; } 50% { transform: scale(1.15); opacity: 1; } 100% { transform: scale(0.8); opacity: 0.7; } }
 
     /* ---- Native Fact Cards ---- */
     .tile-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-bottom: 12px; }
@@ -219,6 +216,31 @@ st.markdown("""
         margin-top: 4px; margin-bottom: 4px;
     }
 </style>
+""", unsafe_allow_html=True)
+
+# ALWAYS RENDER THE HEADER FIRST
+st.markdown("""
+<div class="hero-card">
+    <div class="hero-title-row">
+        <div class="icon-badge">
+            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#FFFFFF" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
+                <polyline points="14 2 14 8 20 8"></polyline>
+                <line x1="16" y1="13" x2="8" y2="13"></line>
+                <line x1="16" y1="17" x2="8" y2="17"></line>
+                <polyline points="10 9 9 9 8 9"></polyline>
+            </svg>
+        </div>
+        <div class="hero-title">apk-diff</div>
+    </div>
+    <div class="hero-sub">Diffs two package builds and surfaces JNI exports, GraphQL/ProtoBuf schemas, DEX class changes, databases, split bundles, third-party SDKs, exposed secrets, architectures, locales, and signing metadata.</div>
+    <div class="hero-pillrow">
+        <span class="hero-pill">JNI / Native</span>
+        <span class="hero-pill">SDK Ecosystem</span>
+        <span class="hero-pill">Secrets Scan</span>
+        <span class="hero-pill">Locales / ABI</span>
+    </div>
+</div>
 """, unsafe_allow_html=True)
 
 # ==================== JADX DECOMPILER SETUP ====================
@@ -469,7 +491,6 @@ def process_zip_archive(zip_obj, details):
 
         details["files"].add(name)
         details["total_size"] += info.file_size
-
         lower_name = name.lower()
         category = categorize_file(lower_name)
         details["category_sizes"][category] = details["category_sizes"].get(category, 0) + info.file_size
@@ -640,16 +661,30 @@ def render_quickfacts(old_data, new_data):
                 use_container_width=True
             )
 
-        if added_ui_clean:
-            for s in added_ui_clean[:250]: st.markdown(f"- {sanitize(s)}")
-            if len(added_ui_clean) > 250: st.caption(f"…and {len(added_ui_clean) - 250} more. Download the text file above for all items.")
+            ui_search_query = st.text_input("Search UI Texts:", placeholder="Filter UI texts...", key="ui_search")
+
+            if ui_search_query.strip():
+                sq_ui = ui_search_query.strip().lower()
+                filtered_ui_added = [s for s in added_ui_clean if sq_ui in s.lower()]
+                filtered_ui_removed = [s for s in removed_ui_clean if sq_ui in s.lower()]
+                st.caption(f"Showing matches for '{sanitize(ui_search_query)}': {len(filtered_ui_added)} added, {len(filtered_ui_removed)} removed")
+                
+                tab_ui_add, tab_ui_rem = st.tabs([f"Added ({len(filtered_ui_added)})", f"Removed ({len(filtered_ui_removed)})"])
+                with tab_ui_add:
+                    for s in filtered_ui_added[:300]: st.markdown(f"- {sanitize(s)}")
+                with tab_ui_rem:
+                    for s in filtered_ui_removed[:300]: st.markdown(f"- ~~{sanitize(s)}~~")
+            else:
+                if added_ui_clean:
+                    for s in added_ui_clean[:250]: st.markdown(f"- {sanitize(s)}")
+                    if len(added_ui_clean) > 250: st.caption(f"…and {len(added_ui_clean) - 250} more. Download the text file above for all items.")
+                
+                if removed_ui_clean:
+                    st.markdown(f"**Removed ({len(removed_ui_clean)}):**")
+                    for s in removed_ui_clean[:100]: st.markdown(f"- ~~{sanitize(s)}~~")
+                    if len(removed_ui_clean) > 100: st.caption(f"…and {len(removed_ui_clean) - 100} more. Download the text file above for all items.")
         else:
             st.markdown("_No new UI copy detected between builds._")
-        
-        if removed_ui_clean:
-            st.markdown(f"**Removed ({len(removed_ui_clean)}):**")
-            for s in removed_ui_clean[:100]: st.markdown(f"- ~~{sanitize(s)}~~")
-            if len(removed_ui_clean) > 100: st.caption(f"…and {len(removed_ui_clean) - 100} more. Download the text file above for all items.")
 
     with st.expander("Raw string diff — unfiltered (no AI)"):
         raw_added = sorted((new_data["all_strings"] | new_data["config_strings"]) - (old_data["all_strings"] | old_data["config_strings"]))
@@ -711,7 +746,7 @@ if st.session_state.report_html:
     
     # --- JADX CODE EXTRACTION ---
     st.markdown('<div class="section-label">DEEP CODE EXTRACTION</div>', unsafe_allow_html=True)
-    if st.button("Extract Java Source Code"):
+    if st.button("Extract Java Source Code", use_container_width=True):
         zip_bytes = decompile_apk(st.session_state.new_file_bytes, st.session_state.new_file_name)
         if zip_bytes:
             st.session_state.jadx_zip_bytes = zip_bytes
@@ -739,30 +774,6 @@ if st.session_state.report_html:
 
 # ==================== MAIN INPUT VIEW ====================
 else:
-    st.markdown("""
-    <div class="hero-card">
-        <div class="hero-title-row">
-            <div class="icon-badge">
-                <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#FFFFFF" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
-                    <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
-                    <polyline points="14 2 14 8 20 8"></polyline>
-                    <line x1="16" y1="13" x2="8" y2="13"></line>
-                    <line x1="16" y1="17" x2="8" y2="17"></line>
-                    <polyline points="10 9 9 9 8 9"></polyline>
-                </svg>
-            </div>
-            <div class="hero-title">apk-diff</div>
-        </div>
-        <div class="hero-sub">Diffs two package builds and surfaces JNI exports, GraphQL/ProtoBuf schemas, DEX class changes, databases, split bundles, third-party SDKs, exposed secrets, architectures, locales, and signing metadata.</div>
-        <div class="hero-pillrow">
-            <span class="hero-pill">JNI / Native</span>
-            <span class="hero-pill">SDK Ecosystem</span>
-            <span class="hero-pill">Secrets Scan</span>
-            <span class="hero-pill">Locales / ABI</span>
-        </div>
-    </div>
-    """, unsafe_allow_html=True)
-
     old_file = st.file_uploader("Old Version (.apk, .aab, .xapk, .apks)", type=["apk", "aab", "xapk", "apks", "zip"])
     new_file = st.file_uploader("New Version (.apk, .aab, .xapk, .apks)", type=["apk", "aab", "xapk", "apks", "zip"])
 
@@ -781,12 +792,13 @@ else:
             scanner_placeholder = st.empty()
 
             scanner_placeholder.markdown("""
-            <div class="shimmer-card">
-                <div class="shimmer-icon"></div>
-                <div class="shimmer-content">
-                    <div class="shimmer-line-1"></div>
-                    <div class="shimmer-line-2"></div>
+            <div class="scanner-box">
+                <div class="pulse-container">
+                    <div class="radar-ring"></div>
+                    <div class="radar-core"></div>
                 </div>
+                <div style="font-weight: 800; font-size: 16px; color: #21005D;">Decompressing Archives & Native JNI Bridges</div>
+                <div style="font-size: 13px; color: #49454F; margin-top: 4px;">Demangling C++ symbols, mapping GraphQL & ProtoBufs...</div>
             </div>
             """, unsafe_allow_html=True)
 
@@ -796,6 +808,17 @@ else:
             old_data = inspect_entire_bundle(old_bytes)
             new_data = inspect_entire_bundle(new_bytes)
             st.session_state.quickfacts = (old_data, new_data)
+
+            scanner_placeholder.markdown("""
+            <div class="scanner-box">
+                <div class="pulse-container">
+                    <div class="radar-ring"></div>
+                    <div class="radar-core"></div>
+                </div>
+                <div style="font-weight: 800; font-size: 16px; color: #21005D;">Diffing Bytecode, SDKs & Metadata</div>
+                <div style="font-size: 13px; color: #49454F; margin-top: 4px;">Scanning for exposed secrets, ABI splits, locale diffs...</div>
+            </div>
+            """, unsafe_allow_html=True)
 
             added_files = list(new_data["files"] - old_data["files"])
             removed_files = list(old_data["files"] - new_data["files"])
@@ -880,34 +903,51 @@ else:
             {added_ui_strings[:15]}
             """
 
+            scanner_placeholder.markdown("""
+            <div class="scanner-box">
+                <div class="pulse-container">
+                    <div class="radar-ring"></div>
+                    <div class="radar-core"></div>
+                </div>
+                <div style="font-weight: 800; font-size: 16px; color: #21005D;">Synthesizing AI Teardown Report</div>
+                <div style="font-size: 13px; color: #49454F; margin-top: 4px;">Formulating unreleased predictions & technical audits...</div>
+            </div>
+            """, unsafe_allow_html=True)
+
             client = Groq(api_key=st.secrets["GROQ_API_KEY"])
 
             prompt = f"""
             You are a lead mobile software investigator analyzing an APK diff. Output a clean Material Design 3 HTML dashboard. 
             Do NOT use generic filler text like "The updated package introduces new features and improvements." If a list is empty, state explicitly: "No changes detected." Always explicitly cite the exact class/file names from the provided data.
-            Output strictly raw HTML (no markdown codeblocks). Do NOT use complex inline SVGs. Use the exact HTML provided below for the card headers.
+            Output strictly raw HTML (no markdown codeblocks). 
+
+            Use the EXACT HTML blocks provided below for the card containers and headers. Do not change the SVG paths or container styles.
 
             - **Metric Chips Row**: `display: flex; gap: 6px; flex-wrap: wrap; margin-bottom: 12px;`. Pills: `background: #EADDFF; color: #21005D; padding: 4px 10px; border-radius: 100px; font-size: 11px; font-weight: bold;`. Include: Size Change ({size_diff_mb} MB), Impact Rating (e.g. 8/10), New Flags ({len(feature_toggles)}), New JNI Bridges ({len(added_jni)}), New SDKs ({len(added_sdks)}).
 
             - **Card 1 (AI Analysis & Executive Summary)**:
-              `<div style="background-color: #F3EDF7; border-radius: 16px; padding: 14px; margin-bottom: 12px; border-left: 4px solid #6750A4;">`
-              `<div style="font-weight:700;font-size:15px;color:#1D1B20;margin-bottom:8px;">AI Analysis & Executive Summary</div>`
+              <div style="background-color: #F3EDF7; border-radius: 16px; padding: 14px; margin-bottom: 12px; border-left: 4px solid #6750A4;">
+              <div style="display:flex; align-items:center; gap:8px; margin-bottom:8px;"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#6750A4" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2v4M12 18v4M4.93 4.93l2.83 2.83M16.24 16.24l2.83 2.83M2 12h4M18 12h4M4.93 19.07l2.83-2.83M16.24 7.76l2.83-2.83"/></svg><span style="font-weight:800;font-size:16px;color:#1D1B20;">AI Analysis & Executive Summary</span></div>
               Write 3-4 specific narrative sentences explaining the actual technical changes.
+              </div>
 
             - **Card 2 (Unreleased Feature Blueprints)**:
-              `<div style="background-color: #FFD8E4; color: #31111D; border-radius: 16px; padding: 14px; margin-bottom: 12px; border-left: 4px solid #B12B58;">`
-              `<div style="font-weight:700;font-size:15px;color:#31111D;margin-bottom:8px;">Unreleased Feature Blueprints</div>`
+              <div style="background-color: #FFD8E4; color: #31111D; border-radius: 16px; padding: 14px; margin-bottom: 12px; border-left: 4px solid #B12B58;">
+              <div style="display:flex; align-items:center; gap:8px; margin-bottom:8px;"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#B12B58" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"></polygon></svg><span style="font-weight:800;font-size:16px;color:#31111D;">Unreleased Feature Blueprints</span></div>
               Provide concrete feature predictions based strictly on the data. Include terminal code blocks (`background-color:#1D1B20;color:#E6E1E5;padding:8px 12px;border-radius:8px;font-family:monospace;font-size:11px;word-break:break-all;margin-top:6px;`) showing example grep/adb commands.
+              </div>
 
             - **Card 3 (Exact Package Technical Diffs)**:
-              `<div style="background-color: #F7F2FA; border-radius: 16px; padding: 14px; margin-bottom: 12px; border: 1px solid #CAC4D0; border-left: 4px solid #79747E;">`
-              `<div style="font-weight:700;font-size:15px;color:#1D1B20;margin-bottom:8px;">Exact Package Technical Diffs</div>`
+              <div style="background-color: #F7F2FA; border-radius: 16px; padding: 14px; margin-bottom: 12px; border: 1px solid #CAC4D0; border-left: 4px solid #79747E;">
+              <div style="display:flex; align-items:center; gap:8px; margin-bottom:8px;"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#49454F" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><polyline points="16 18 22 12 16 6"></polyline><polyline points="8 6 2 12 8 18"></polyline></svg><span style="font-weight:800;font-size:16px;color:#1D1B20;">Exact Package Technical Diffs</span></div>
               List JNI methods, ProtoBuf schemas, GraphQL, endpoints, and permissions.
+              </div>
 
             - **Card 4 (Security, SDKs & Packaging Risk)**:
-              `<div style="background-color: #FFF3E0; color: #3E2723; border-radius: 16px; padding: 14px; margin-bottom: 12px; border-left: 4px solid #E8A33D;">`
-              `<div style="font-weight:700;font-size:15px;color:#3E2723;margin-bottom:8px;">Security, SDKs & Packaging Risk</div>`
+              <div style="background-color: #FFF3E0; color: #3E2723; border-radius: 16px; padding: 14px; margin-bottom: 12px; border-left: 4px solid #E8A33D;">
+              <div style="display:flex; align-items:center; gap:8px; margin-bottom:8px;"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#3E2723" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"></path></svg><span style="font-weight:800;font-size:16px;color:#3E2723;">Security, SDKs & Packaging Risk</span></div>
               Analyze added/removed SDKs and secrets.
+              </div>
 
             RAW DATA:
             {diff_summary}
