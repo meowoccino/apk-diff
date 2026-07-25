@@ -5,6 +5,9 @@ import re
 import sqlite3
 import tempfile
 import ctypes
+import os
+import subprocess
+import urllib.request
 from collections import defaultdict
 from PIL import Image
 from groq import Groq
@@ -28,11 +31,13 @@ st.markdown("""
         max-width: 480px !important;
     }
 
+    /* Nuke all Streamlit overlays, including the new Deploy/Manage App button */
     [data-testid="stHeader"],
     [data-testid="stToolbar"],
     [data-testid="stDecoration"],
     [data-testid="stStatusWidget"],
     [data-testid="manage-app-button"],
+    [data-testid="stAppDeployButton"],
     header, footer,
     .viewerBadge_container__1QSob,
     .styles_viewerBadge__1yB5_ {
@@ -110,6 +115,9 @@ st.markdown("""
         transition: all 0.15s ease-in-out !important;
         margin-top: 10px;
         width: 100%;
+        display: flex;
+        justify-content: center;
+        align-items: center;
     }
     div.stButton > button:hover, div.stButton > button:active {
         background: #503E81 !important;
@@ -176,12 +184,46 @@ st.markdown("""
 </style>
 """, unsafe_allow_html=True)
 
+# ==================== JADX DECOMPILER SETUP ====================
+def setup_jadx():
+    """Downloads and extracts JADX if not present in the cloud container."""
+    if not os.path.exists("jadx"):
+        with st.spinner("Setting up JADX environment..."):
+            urllib.request.urlretrieve("https://github.com/skylot/jadx/releases/download/v1.4.7/jadx-1.4.7.zip", "jadx.zip")
+            with zipfile.ZipFile("jadx.zip", 'r') as zip_ref:
+                zip_ref.extractall("jadx")
+            os.chmod("jadx/bin/jadx", 0o755)
+
+def decompile_apk(file_bytes, filename):
+    """Runs JADX CLI to decompile the APK to Java source (skipping resources)."""
+    setup_jadx()
+    
+    # Save bytes to a temp APK file
+    apk_path = os.path.join(tempfile.gettempdir(), filename)
+    with open(apk_path, "wb") as f:
+        f.write(file_bytes)
+        
+    out_dir = os.path.join(tempfile.gettempdir(), f"jadx_out_{filename}")
+    
+    with st.spinner(f"Running JADX Decompiler on {filename}... (This may take a minute)"):
+        # Run JADX without resources (-r) to save memory/time in cloud
+        subprocess.run(["jadx/bin/jadx", "-d", out_dir, "-r", "--show-bad-code", apk_path])
+        
+    # Zip the output directory
+    zip_path = os.path.join(tempfile.gettempdir(), f"{filename}_source.zip")
+    shutil.make_archive(zip_path.replace('.zip', ''), 'zip', out_dir)
+    
+    with open(zip_path, "rb") as f:
+        return f.read()
+
 # ==================== SESSION STATE ====================
 for key, default in [
     ("report_html", None),
     ("added_image_keys", []),
     ("new_data_images", {}),
     ("quickfacts", None),
+    ("jadx_ready", False),
+    ("jadx_zip_bytes", None)
 ]:
     if key not in st.session_state:
         st.session_state[key] = default
@@ -248,9 +290,6 @@ UI_TEXT_SKIP_SUBSTR = (
 
 
 def looks_like_ui_text(s):
-    """Heuristic filter to separate human-readable UI copy (labels, titles,
-    error messages, resource keys) from paths / class descriptors that also
-    live in the same binary string pool inside resources.arsc."""
     if not (2 <= len(s) <= 140):
         return False
     if "/" in s or "\\" in s:
@@ -326,7 +365,8 @@ def extract_strings_from_bytes(raw_bytes):
     for m in matches:
         try:
             decoded = m.decode('ascii', errors='ignore').strip()
-            if len(decoded) < 120 and not is_framework_noise(decoded):
+            # Clean up whitespace and ensure it's not empty
+            if len(decoded) < 120 and decoded and not is_framework_noise(decoded):
                 strings.add(decoded)
         except Exception:
             pass
@@ -497,11 +537,6 @@ def process_zip_archive(zip_obj, details):
             else:
                 details["all_strings"].update(file_tokens)
 
-            # resources.arsc holds the compiled global string pool — this is
-            # the real equivalent of "strings.xml" inside a packaged APK,
-            # since plain-text res/values/*.xml files don't survive the
-            # build. We re-scan its tokens and keep only the ones that look
-            # like human-facing copy rather than paths/class descriptors.
             if lower_name.endswith("resources.arsc") or lower_name.endswith(".arsc"):
                 details["ui_strings"].update(t for t in file_tokens if looks_like_ui_text(t))
 
@@ -628,7 +663,8 @@ def render_quickfacts(old_data, new_data):
         st.caption("Pulled from resources.arsc's compiled string pool — the real equivalent of strings.xml inside a built APK, filtered to human-readable copy.")
         if added_ui:
             for s in added_ui[:250]:
-                st.markdown(f"- {s}")
+                if s.strip():
+                    st.markdown(f"- {s}")
             if len(added_ui) > 250:
                 st.caption(f"…and {len(added_ui) - 250} more (truncated for display).")
         else:
@@ -636,7 +672,8 @@ def render_quickfacts(old_data, new_data):
         if removed_ui:
             st.markdown(f"**Removed ({len(removed_ui)}):**")
             for s in removed_ui[:100]:
-                st.markdown(f"- ~~{s}~~")
+                if s.strip():
+                    st.markdown(f"- ~~{s}~~")
             if len(removed_ui) > 100:
                 st.caption(f"…and {len(removed_ui) - 100} more (truncated for display).")
 
@@ -647,12 +684,14 @@ def render_quickfacts(old_data, new_data):
         tab_add, tab_rem = st.tabs([f"➕ Added ({len(raw_added)})", f"➖ Removed ({len(raw_removed)})"])
         with tab_add:
             for s in raw_added[:400]:
-                st.markdown(f'<div class="mono-block">{s}</div>', unsafe_allow_html=True)
+                if s.strip():
+                    st.markdown(f'<div class="mono-block">{s}</div>', unsafe_allow_html=True)
             if len(raw_added) > 400:
                 st.caption(f"…and {len(raw_added) - 400} more (truncated for display).")
         with tab_rem:
             for s in raw_removed[:400]:
-                st.markdown(f'<div class="mono-block">{s}</div>', unsafe_allow_html=True)
+                if s.strip():
+                    st.markdown(f'<div class="mono-block">{s}</div>', unsafe_allow_html=True)
             if len(raw_removed) > 400:
                 st.caption(f"…and {len(raw_removed) - 400} more (truncated for display).")
 
@@ -676,13 +715,33 @@ if st.session_state.report_html:
 
     st.markdown('<div class="section-label">🤖 AI Teardown Report</div>', unsafe_allow_html=True)
     st.markdown(st.session_state.report_html, unsafe_allow_html=True)
+    
+    # --- JADX DOWNLOAD SECTION ---
+    st.markdown('<div class="section-label">⚙️ Deep Code Extraction</div>', unsafe_allow_html=True)
+    if st.button("Run JADX Decompiler (Java Source)"):
+        # We process only the new file for JADX to save time
+        zip_bytes = decompile_apk(st.session_state.new_file_bytes, st.session_state.new_file_name)
+        st.session_state.jadx_zip_bytes = zip_bytes
+        st.session_state.jadx_ready = True
+        st.rerun()
+        
+    if st.session_state.jadx_ready and st.session_state.jadx_zip_bytes:
+        st.download_button(
+            label="📥 Download Decompiled Java Source (.zip)",
+            data=st.session_state.jadx_zip_bytes,
+            file_name=f"jadx_source.zip",
+            mime="application/zip",
+            use_container_width=True
+        )
 
     st.markdown("<div style='margin-top: 16px;'></div>", unsafe_allow_html=True)
-    if st.button("🔄 Start New Scan", use_container_width=True):
+    if st.button("Start New Scan", use_container_width=True):
         st.session_state.report_html = None
         st.session_state.added_image_keys = []
         st.session_state.new_data_images = {}
         st.session_state.quickfacts = None
+        st.session_state.jadx_ready = False
+        st.session_state.jadx_zip_bytes = None
         st.rerun()
 
 # ==================== MAIN INPUT VIEW ====================
@@ -718,6 +777,14 @@ else:
         elif not old_file or not new_file:
             st.error("Please upload both Old and New package files.")
         else:
+            # Store bytes for JADX later
+            st.session_state.new_file_bytes = new_file.read()
+            st.session_state.new_file_name = new_file.name
+            
+            # Reset file pointer for standard analysis
+            old_file.seek(0)
+            new_file.seek(0)
+            
             scanner_placeholder = st.empty()
 
             scanner_placeholder.markdown("""
@@ -729,7 +796,7 @@ else:
             """, unsafe_allow_html=True)
 
             old_bytes = old_file.read()
-            new_bytes = new_file.read()
+            new_bytes = st.session_state.new_file_bytes
 
             old_data = inspect_entire_bundle(old_bytes)
             new_data = inspect_entire_bundle(new_bytes)
