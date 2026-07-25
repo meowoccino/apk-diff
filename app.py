@@ -12,7 +12,7 @@ import shutil
 import html
 from collections import defaultdict
 from PIL import Image
-from groq import Groq
+from google import genai
 
 # ==================== PAGE SETUP ====================
 st.set_page_config(page_title="apk-diff", page_icon="⚡", layout="centered")
@@ -709,7 +709,6 @@ def render_quickfacts(old_data, new_data):
         raw_added_clean = [s for s in raw_added if s.strip()]
         raw_removed_clean = [s for s in raw_removed if s.strip()]
 
-        # Download button for 100% of the raw string diffs
         full_text_export = f"=== ADDED STRINGS ({len(raw_added_clean)}) ===\n" + "\n".join(raw_added_clean) + f"\n\n=== REMOVED STRINGS ({len(raw_removed_clean)}) ===\n" + "\n".join(raw_removed_clean)
         st.download_button(
             label=f"📥 Download Full Raw String Diff ({len(raw_added_clean) + len(raw_removed_clean)} items)",
@@ -824,8 +823,8 @@ else:
     new_file = st.file_uploader("New Version (.apk, .aab, .xapk, .apks)", type=["apk", "aab", "xapk", "apks", "zip"])
 
     if st.button("Run Deep Package Teardown", type="primary", use_container_width=True):
-        if "GROQ_API_KEY" not in st.secrets or not st.secrets["GROQ_API_KEY"]:
-            st.error("GROQ_API_KEY is missing from Streamlit Secrets!")
+        if "GEMINI_API_KEY" not in st.secrets or not st.secrets["GEMINI_API_KEY"]:
+            st.error("GEMINI_API_KEY is missing from Streamlit Secrets! Get one for free at aistudio.google.com")
         elif not old_file or not new_file:
             st.error("Please upload both Old and New package files.")
         else:
@@ -970,13 +969,13 @@ else:
             </div>
             """, unsafe_allow_html=True)
 
-            client = Groq(api_key=st.secrets["GROQ_API_KEY"])
+            client = genai.Client(api_key=st.secrets["GEMINI_API_KEY"])
 
-            # Prompt enforcing exact vector SVGs so icons never render as broken shapes
             prompt = f"""
-            You are a lead mobile software investigator. Examine these package diffs and output a clean, modern Material Design 3 report dashboard in HTML.
+            You are a lead mobile teardown investigator. Examine these package diffs and output a clean, modern Material Design 3 dashboard report in HTML.
             Output strictly raw, valid HTML with inline CSS. Do NOT wrap output in markdown codeblocks (do NOT use ```html or ```).
-            
+            Be thorough and specific — write substantive analysis paragraphs (not just bullet fragments), referencing concrete class/file/endpoint names from the data. Where evidence is thin, say so explicitly rather than inventing detail.
+
             Header rules for cards:
             Always start each card header with the exact provided SVG icon string on a flex row so icons render cleanly next to titles.
 
@@ -1007,14 +1006,15 @@ else:
             """
 
             try:
-                completion = client.chat.completions.create(
-                    model="llama-3.3-70b-versatile",
-                    messages=[{"role": "user", "content": prompt}],
-                    temperature=0.1,
-                    max_tokens=8000,
+                response = client.models.generate_content(
+                    model="gemini-2.0-flash",
+                    contents=prompt,
+                    config=genai.types.GenerateContentConfig(
+                        temperature=0.1,
+                    )
                 )
 
-                output_html = completion.choices[0].message.content
+                output_html = response.text
                 output_html = re.sub(r"^```html\s*", "", output_html, flags=re.MULTILINE)
                 output_html = re.sub(r"^```\s*", "", output_html, flags=re.MULTILINE)
 
@@ -1024,4 +1024,4 @@ else:
 
             except Exception as e:
                 scanner_placeholder.empty()
-                st.error(f"Groq API Error: {e}")
+                st.error(f"Gemini API Error: {e}")
