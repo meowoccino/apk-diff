@@ -39,3 +39,37 @@ This app is designed to run smoothly on Streamlit Cloud, making it fully accessi
 3. Before deploying, go to **Advanced Settings** and add your Groq API key to the Secrets:
    ```toml
    GROQ_API_KEY = "your-api-key-here"
+   ```
+4. Click Deploy.
+
+### Option 2: Running Locally
+1. Clone this repository to your machine.
+2. Install the required dependencies:
+   ```bash
+   pip install -r requirements.txt
+   ```
+3. Create a `.streamlit` folder in the root directory, and inside it, create a `secrets.toml` file with your API key:
+   ```toml
+   GROQ_API_KEY = "your-api-key-here"
+   ```
+4. Start the app:
+   ```bash
+   streamlit run app.py
+   ```
+
+---
+
+## How to Use
+
+1. Upload the older version of the app in the first slot.
+2. Upload the newer version of the app in the second slot.
+3. Tap **Run Deep Package Teardown**.
+4. The app will immediately decompress the archives, demangle C++ symbols, map out the SDKs, and generate a clean dashboard showing the exact changes.
+5. Expand the dropdowns to explore raw strings and UI copy, or trigger the JADX Decompiler at the bottom to download the raw Java source.
+
+---
+
+## Notes
+
+* **File Limits:** Streamlit typically limits file uploads to 200MB by default. If you are handling massive files, you may need to adjust your Streamlit config file to allow larger uploads.
+* **JADX Execution:** The app downloads a lightweight, standalone JADX binary on the fly to decompile the code.
