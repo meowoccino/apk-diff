@@ -112,7 +112,7 @@ st.markdown("""
     }
     div[data-testid="stFileUploader"] small { display: none !important; }
 
-    /* ---- Native MD3 Action Button ---- */
+    /* ---- Native MD3 Action Button (Smaller Pill) ---- */
     div.stButton > button {
         background: #6750A4 !important;
         color: #FFFFFF !important;
@@ -129,6 +129,13 @@ st.markdown("""
     }
     div.stButton > button:active {
         transform: scale(0.98) !important;
+    }
+    
+    /* Secondary Button Style */
+    .secondary-btn button {
+        background: #31111D !important;
+        color: #FFD8E4 !important;
+        box-shadow: 0 2px 6px rgba(49, 17, 29, 0.2) !important;
     }
 
     /* ---- Native Expanders ---- */
@@ -200,7 +207,7 @@ st.markdown("""
     .chip-warn { background: #FFEAEE; color: #410E0B; }
     .chip-ok { background: #E6F4EA; color: #0B3B12; }
 
-    /* ---- AI Card Styling ---- */
+    /* ---- AI Card Styling (Standard) ---- */
     .report-card {
         border-radius: 16px;
         padding: 16px;
@@ -231,6 +238,42 @@ st.markdown("""
         font-size: 11px;
         word-break: break-all;
         margin: 8px 0;
+    }
+
+    /* ---- AI Card Styling (Hunter Mode) ---- */
+    .hunter-card {
+        background: #1D1B20;
+        color: #E6E1E5;
+        border-left: 4px solid #D0BCFF;
+        border-radius: 16px;
+        padding: 16px;
+        margin-bottom: 12px;
+        box-shadow: 0 4px 12px rgba(0,0,0,0.1);
+    }
+    .hunter-title {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        font-weight: 800;
+        font-size: 16px;
+        color: #D0BCFF;
+        margin-bottom: 12px;
+    }
+    .hunter-evidence {
+        background: #332D41;
+        padding: 10px;
+        border-radius: 8px;
+        font-size: 12.5px;
+        margin-bottom: 10px;
+    }
+    .hunter-cmd {
+        background: #000000;
+        color: #00FF00;
+        padding: 10px;
+        border-radius: 8px;
+        font-family: 'SFMono-Regular', Consolas, monospace;
+        font-size: 11px;
+        word-break: break-all;
     }
 
     /* ---- Tabs styling ---- */
@@ -312,6 +355,8 @@ def decompile_apk(file_bytes, filename):
 # ==================== SESSION STATE ====================
 for key, default in [
     ("report_data", None),
+    ("hunter_data", None),
+    ("scan_mode", None),
     ("added_image_keys", []),
     ("new_data_images", {}),
     ("quickfacts", None),
@@ -536,6 +581,9 @@ def process_zip_archive(zip_obj, details):
                 try: details["images"][name.split('/')[-1]] = zip_obj.read(name)
                 except Exception: pass
 
+        if lower_name.startswith("res/layout/") and lower_name.endswith(".xml"):
+            details["layouts"].add(lower_name.split('/')[-1])
+
         try:
             raw_bytes = zip_obj.read(name) if info.file_size < 10 * 1024 * 1024 else zip_obj.open(name).read(5 * 1024 * 1024)
 
@@ -592,6 +640,7 @@ def inspect_entire_bundle(file_bytes):
         "annotations": set(), "protobuf_schemas": set(), "graphql_ops": set(), "jni_exports": set(), "class_paths": set(),
         "db_schemas": set(), "xor_urls": set(), "activities": set(), "services": set(), "permissions": set(),
         "deep_links": set(), "endpoints": set(), "images": {}, "category_sizes": {}, "ui_strings": set(),
+        "layouts": set()
     }
     try:
         with zipfile.ZipFile(io.BytesIO(file_bytes), "r") as z:
@@ -775,19 +824,16 @@ def render_quickfacts(old_data, new_data, added_image_keys, new_data_images):
                 if len(raw_removed_clean) > 250: st.caption(f"…and {len(raw_removed_clean) - 250} more. Download the text file above for all items.")
 
 def format_html_list(items):
-    """Converts Python string lists cleanly into safe HTML bullet items."""
     if not items:
         return "<li>No changes detected.</li>"
     return "".join(f"<li><code>{sanitize(item)}</code></li>" if "_" in item or "." in item or "/" in item else f"<li>{sanitize(item)}</li>" for item in items[:12])
 
-def render_ai_dashboard(report_data):
-    """PYTHON TEMPLATE ENGINE — Renders 100% unbreakable HTML/CSS Cards."""
+def render_standard_dashboard(report_data):
     size_mb = report_data.get("size_diff_mb", 0.0)
     flags_cnt = report_data.get("num_flags", 0)
     jni_cnt = report_data.get("num_jni", 0)
     sdks_cnt = report_data.get("num_sdks", 0)
     
-    # Render top metric chips
     st.markdown(f"""
     <div class="chip-row">
         <span class="chip">Size Change: <b>{'+' if size_mb >= 0 else ''}{size_mb} MB</b></span>
@@ -798,7 +844,6 @@ def render_ai_dashboard(report_data):
     </div>
     """, unsafe_allow_html=True)
 
-    # Card 1: Executive Summary
     summary_text = sanitize(report_data.get("summary", "Analysis complete."))
     st.markdown(f"""
     <div class="report-card" style="background-color: #F3EDF7; border-left: 4px solid #6750A4; color: #1D1B20;">
@@ -814,7 +859,6 @@ def render_ai_dashboard(report_data):
     </div>
     """, unsafe_allow_html=True)
 
-    # Card 2: Feature Blueprints
     blueprints_text = sanitize(report_data.get("blueprints", "No new unreleased feature patterns detected."))
     cmd_code = sanitize(report_data.get("command", "adb shell dumpsys package | grep -i feature"))
     st.markdown(f"""
@@ -832,7 +876,6 @@ def render_ai_dashboard(report_data):
     </div>
     """, unsafe_allow_html=True)
 
-    # Card 3: Exact Technical Diffs
     jni_html = format_html_list(report_data.get("jni", []))
     proto_html = format_html_list(report_data.get("proto", []))
     graphql_html = format_html_list(report_data.get("graphql", []))
@@ -858,7 +901,6 @@ def render_ai_dashboard(report_data):
     </div>
     """, unsafe_allow_html=True)
 
-    # Card 4: Security & SDKs
     sec_text = sanitize(report_data.get("security", "No elevated risk found."))
     st.markdown(f"""
     <div class="report-card" style="background-color: #FFF3E0; border-left: 4px solid #E8A33D; color: #3E2723;">
@@ -874,15 +916,48 @@ def render_ai_dashboard(report_data):
     </div>
     """, unsafe_allow_html=True)
 
+def render_hunter_dashboard(hunter_data):
+    features = hunter_data.get("features", [])
+    
+    if not features:
+        st.markdown('<div class="hunter-card">No clear feature correlations found in this scan.</div>', unsafe_allow_html=True)
+        return
+
+    for feat in features:
+        name = sanitize(feat.get("name", "Unknown Feature"))
+        evidence = sanitize(feat.get("evidence", "No evidence provided."))
+        cmd = sanitize(feat.get("activation", "N/A"))
+        
+        st.markdown(f"""
+        <div class="hunter-card">
+            <div class="hunter-title">
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#D0BCFF" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+                    <circle cx="11" cy="11" r="8"></circle>
+                    <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
+                </svg>
+                {name}
+            </div>
+            <div class="hunter-evidence">
+                <b>Evidence found:</b><br>{evidence}
+            </div>
+            <div class="hunter-cmd">
+                $ {cmd}
+            </div>
+        </div>
+        """, unsafe_allow_html=True)
 
 # ==================== FULLSCREEN REPORT VIEW ====================
-if st.session_state.report_data:
+if st.session_state.report_data or st.session_state.hunter_data:
     if st.session_state.quickfacts:
         old_q, new_q = st.session_state.quickfacts
         render_quickfacts(old_q, new_q, st.session_state.added_image_keys, st.session_state.new_data_images)
 
-    st.markdown('<div class="section-label">AI TEARDOWN REPORT</div>', unsafe_allow_html=True)
-    render_ai_dashboard(st.session_state.report_data)
+    if st.session_state.scan_mode == "hunter":
+        st.markdown('<div class="section-label" style="color:#D0BCFF;">FEATURE INTEL REPORT</div>', unsafe_allow_html=True)
+        render_hunter_dashboard(st.session_state.hunter_data)
+    else:
+        st.markdown('<div class="section-label">AI TEARDOWN REPORT</div>', unsafe_allow_html=True)
+        render_standard_dashboard(st.session_state.report_data)
     
     st.markdown("<div style='height: 16px;'></div>", unsafe_allow_html=True)
     if st.button("Extract Java Source Code", use_container_width=True):
@@ -904,6 +979,8 @@ if st.session_state.report_data:
     st.markdown("<div style='height: 6px;'></div>", unsafe_allow_html=True)
     if st.button("Start New Scan", use_container_width=True):
         st.session_state.report_data = None
+        st.session_state.hunter_data = None
+        st.session_state.scan_mode = None
         st.session_state.added_image_keys = []
         st.session_state.new_data_images = {}
         st.session_state.quickfacts = None
@@ -916,12 +993,20 @@ else:
     old_file = st.file_uploader("Old Version (.apk, .aab, .xapk, .apks)", type=["apk", "aab", "xapk", "apks", "zip"])
     new_file = st.file_uploader("New Version (.apk, .aab, .xapk, .apks)", type=["apk", "aab", "xapk", "apks", "zip"])
 
-    if st.button("Run Deep Package Teardown", use_container_width=True):
+    # Stack buttons for mobile (Emojis removed for clean UI)
+    run_standard = st.button("Standard Deep Scan", use_container_width=True)
+    st.markdown('<div class="secondary-btn">', unsafe_allow_html=True)
+    run_hunter = st.button("Investigative Feature Hunt", use_container_width=True)
+    st.markdown('</div>', unsafe_allow_html=True)
+
+    if run_standard or run_hunter:
         if "GROQ_API_KEY" not in st.secrets or not st.secrets["GROQ_API_KEY"]:
             st.error("GROQ_API_KEY is missing from Streamlit Secrets!")
         elif not old_file or not new_file:
             st.error("Please upload both Old and New package files.")
         else:
+            st.session_state.scan_mode = "hunter" if run_hunter else "standard"
+            
             st.session_state.new_file_bytes = new_file.read()
             st.session_state.new_file_name = new_file.name
             
@@ -981,10 +1066,9 @@ else:
             added_endpoints = list(new_data["endpoints"] - old_data["endpoints"])
 
             added_ui_strings = list(new_data["ui_strings"] - old_data["ui_strings"])
+            added_layouts = list(new_data["layouts"] - old_data["layouts"])
             added_sdks = list(new_data["third_party_sdks"] - old_data["third_party_sdks"])
             removed_sdks = list(old_data["third_party_sdks"] - new_data["third_party_sdks"])
-            added_archs = list(new_data["architectures"] - old_data["architectures"])
-            added_locales = list(new_data["locales"] - old_data["locales"])
             secrets_found = list(scan_for_secrets([
                 new_data["all_strings"] - old_data["all_strings"],
                 new_data["config_strings"] - old_data["config_strings"],
@@ -1001,80 +1085,136 @@ else:
             combined_diffs = added_native[:30] + added_configs[:30] + added_general[:30] + added_annotations[:20] + added_jni[:20]
             feature_toggles = list(set([t for t in combined_diffs if any(k in t.lower() for k in ['flag', 'enable', 'config', 'opt', 'toggle', 'experiment', 'beta'])]))
 
-            diff_summary = f"""
-            SIZE CHANGE: {size_diff_mb} MB
-            FEATURE FLAGS: {feature_toggles[:15]}
-            JNI EXPORTS: {added_jni[:15]}
-            DEMANGLED C++ SYMBOLS: {added_native[:15]}
-            GRAPHQL: {added_graphql[:10]}
-            PROTOBUFS: {added_protobufs[:10]}
-            CLASSES: {added_classes[:15]}
-            ENDPOINTS: {added_endpoints[:10]}
-            PERMISSIONS: {added_permissions[:10]}
-            NEW SDKS: {added_sdks}
-            REMOVED SDKS: {removed_sdks}
-            SECRETS: {secrets_found[:10]}
-            NEW UI COPY: {added_ui_strings[:15]}
-            """
-
-            scanner_placeholder.markdown("""
-            <div class="scanner-box">
-                <div class="pulse-container">
-                    <div class="radar-ring"></div>
-                    <div class="radar-core"></div>
-                </div>
-                <div style="font-weight: 800; font-size: 16px; color: #21005D;">Synthesizing AI Teardown Report</div>
-                <div style="font-size: 13px; color: #49454F; margin-top: 4px;">Formulating unreleased predictions & technical audits...</div>
-            </div>
-            """, unsafe_allow_html=True)
-
             client = Groq(api_key=st.secrets["GROQ_API_KEY"])
 
-            prompt = f"""
-            You are a lead mobile software investigator analyzing an APK diff.
-            Analyze this diff data and respond ONLY in valid JSON format with no markdown wrappers or backticks.
+            if st.session_state.scan_mode == "hunter":
+                scanner_placeholder.markdown("""
+                <div class="scanner-box">
+                    <div class="pulse-container">
+                        <div class="radar-ring" style="border-color: #D0BCFF;"></div>
+                        <div class="radar-core" style="background: #D0BCFF;"></div>
+                    </div>
+                    <div style="font-weight: 800; font-size: 16px; color: #21005D;">Hunting Unreleased Features</div>
+                    <div style="font-size: 13px; color: #49454F; margin-top: 4px;">Correlating XML layouts, UI text, and booleans...</div>
+                </div>
+                """, unsafe_allow_html=True)
 
-            JSON Schema required:
-            {{
-              "summary": "3-4 concise, highly specific narrative sentences explaining the technical changes and intent.",
-              "blueprints": "Concrete feature predictions based strictly on the new flags/classes.",
-              "command": "An adb terminal grep command, e.g.: adb shell dumpsys package | grep -i feature_name",
-              "security": "Assessment of newly added SDKs, exposed secrets, or packaging risks."
-            }}
+                hunter_summary = f"""
+                NEW XML LAYOUTS: {added_layouts[:20]}
+                NEW UI TEXT: {added_ui_strings[:30]}
+                NEW FEATURE FLAGS: {feature_toggles[:30]}
+                """
 
-            RAW DATA:
-            {diff_summary}
-            """
+                prompt = f"""
+                You are an investigative journalist finding hidden features in an APK diff.
+                Correlate the provided layouts, UI text, and feature flags to deduce unreleased features.
+                Respond ONLY in valid JSON format with no markdown wrappers or backticks.
 
-            try:
-                completion = client.chat.completions.create(
-                    model="llama-3.1-8b-instant",
-                    messages=[{"role": "user", "content": prompt}],
-                    temperature=0.1,
-                    max_tokens=1500,
-                )
+                JSON Schema required:
+                {{
+                  "features": [
+                    {{
+                      "name": "Feature Name (e.g. Redact Tool)",
+                      "evidence": "Briefly state the flag, string, and layout that prove this.",
+                      "activation": "adb shell dumpsys package | grep -i feature_flag_name"
+                    }}
+                  ]
+                }}
 
-                raw_res = completion.choices[0].message.content.strip()
-                raw_res = re.sub(r"^```json\s*", "", raw_res, flags=re.MULTILINE)
-                raw_res = re.sub(r"^```\s*", "", raw_res, flags=re.MULTILINE)
+                RAW DATA:
+                {hunter_summary}
+                """
 
-                parsed_ai = json.loads(raw_res)
+                try:
+                    completion = client.chat.completions.create(
+                        model="llama-3.1-8b-instant",
+                        messages=[{"role": "user", "content": prompt}],
+                        temperature=0.1,
+                        max_tokens=1000,
+                    )
+                    raw_res = completion.choices[0].message.content.strip()
+                    raw_res = re.sub(r"^```json\s*", "", raw_res, flags=re.MULTILINE)
+                    raw_res = re.sub(r"^```\s*", "", raw_res, flags=re.MULTILINE)
+                    
+                    st.session_state.hunter_data = json.loads(raw_res)
+                    scanner_placeholder.empty()
+                    st.rerun()
+                except Exception as e:
+                    scanner_placeholder.empty()
+                    st.error(f"Analysis error: {e}")
 
-                # Package findings safely into state for Python rendering
-                parsed_ai["size_diff_mb"] = size_diff_mb
-                parsed_ai["num_flags"] = len(feature_toggles)
-                parsed_ai["num_jni"] = len(added_jni)
-                parsed_ai["num_sdks"] = len(added_sdks)
-                parsed_ai["jni"] = added_jni
-                parsed_ai["proto"] = added_protobufs
-                parsed_ai["graphql"] = added_graphql
-                parsed_ai["endpoints"] = added_endpoints
-                parsed_ai["permissions"] = added_permissions
+            else:
+                # STANDARD MODE
+                scanner_placeholder.markdown("""
+                <div class="scanner-box">
+                    <div class="pulse-container">
+                        <div class="radar-ring"></div>
+                        <div class="radar-core"></div>
+                    </div>
+                    <div style="font-weight: 800; font-size: 16px; color: #21005D;">Synthesizing AI Teardown Report</div>
+                    <div style="font-size: 13px; color: #49454F; margin-top: 4px;">Generating broad technical overview...</div>
+                </div>
+                """, unsafe_allow_html=True)
 
-                st.session_state.report_data = parsed_ai
-                scanner_placeholder.empty()
-                st.rerun()
+                diff_summary = f"""
+                SIZE CHANGE: {size_diff_mb} MB
+                FEATURE FLAGS: {feature_toggles[:15]}
+                JNI EXPORTS: {added_jni[:15]}
+                DEMANGLED C++ SYMBOLS: {added_native[:15]}
+                GRAPHQL: {added_graphql[:10]}
+                PROTOBUFS: {added_protobufs[:10]}
+                CLASSES: {added_classes[:15]}
+                ENDPOINTS: {added_endpoints[:10]}
+                PERMISSIONS: {added_permissions[:10]}
+                NEW SDKS: {added_sdks}
+                REMOVED SDKS: {removed_sdks}
+                SECRETS: {secrets_found[:10]}
+                NEW UI COPY: {added_ui_strings[:15]}
+                """
 
-            except Exception as e:
-                scanner_placeholder.empty()
-                st.error(f"Analysis error: {e}")
+                prompt = f"""
+                You are a lead mobile software investigator analyzing an APK diff.
+                Analyze this diff data and respond ONLY in valid JSON format with no markdown wrappers or backticks.
+
+                JSON Schema required:
+                {{
+                  "summary": "3-4 concise, highly specific narrative sentences explaining the technical changes and intent.",
+                  "blueprints": "Concrete feature predictions based strictly on the new flags/classes.",
+                  "command": "An adb terminal grep command, e.g.: adb shell dumpsys package | grep -i feature_name",
+                  "security": "Assessment of newly added SDKs, exposed secrets, or packaging risks."
+                }}
+
+                RAW DATA:
+                {diff_summary}
+                """
+
+                try:
+                    completion = client.chat.completions.create(
+                        model="llama-3.1-8b-instant",
+                        messages=[{"role": "user", "content": prompt}],
+                        temperature=0.1,
+                        max_tokens=1500,
+                    )
+                    raw_res = completion.choices[0].message.content.strip()
+                    raw_res = re.sub(r"^```json\s*", "", raw_res, flags=re.MULTILINE)
+                    raw_res = re.sub(r"^```\s*", "", raw_res, flags=re.MULTILINE)
+
+                    parsed_ai = json.loads(raw_res)
+
+                    parsed_ai["size_diff_mb"] = size_diff_mb
+                    parsed_ai["num_flags"] = len(feature_toggles)
+                    parsed_ai["num_jni"] = len(added_jni)
+                    parsed_ai["num_sdks"] = len(added_sdks)
+                    parsed_ai["jni"] = added_jni
+                    parsed_ai["proto"] = added_protobufs
+                    parsed_ai["graphql"] = added_graphql
+                    parsed_ai["endpoints"] = added_endpoints
+                    parsed_ai["permissions"] = added_permissions
+
+                    st.session_state.report_data = parsed_ai
+                    scanner_placeholder.empty()
+                    st.rerun()
+
+                except Exception as e:
+                    scanner_placeholder.empty()
+                    st.error(f"Analysis error: {e}")
