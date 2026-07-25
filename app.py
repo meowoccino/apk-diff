@@ -1247,7 +1247,7 @@ else:
                 try:
                     # Switch to 70B model to utilize a separate rate limit bucket
                     completion = client.chat.completions.create(
-                        model="llama3-70b-8192", 
+                        model="llama-3.1-70b-versatile", 
                         messages=[{"role": "user", "content": prompt}],
                         temperature=0.0,
                         max_tokens=1500,
