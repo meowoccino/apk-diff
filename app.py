@@ -11,7 +11,6 @@ import urllib.request
 import shutil
 import html
 import json
-import base64
 import time
 from PIL import Image
 from groq import Groq
@@ -19,7 +18,7 @@ from groq import Groq
 # ==================== PAGE SETUP ====================
 st.set_page_config(page_title="apk-diff", layout="centered")
 
-# ==================== UTILITY & ADB FUNCTIONS ====================
+# ==================== UTILITY FUNCTIONS ====================
 def sanitize(text):
     if not text:
         return ""
@@ -35,51 +34,6 @@ def format_title_case(token):
         return ""
     words = str(token).replace("_", " ").split()
     return " ".join(w.capitalize() for w in words)
-
-def execute_adb_command(command_str):
-    try:
-        cmd = command_str.strip()
-        if cmd.startswith("adb "):
-            cmd = cmd[4:]
-        cmd_args = ["adb"] + cmd.split()
-        result = subprocess.run(cmd_args, capture_output=True, text=True, timeout=8)
-        return result.stdout.strip() or result.stderr.strip() or "Command sent successfully."
-    except Exception as e:
-        return f"Execution error: {e}"
-
-def capture_device_screenshot():
-    try:
-        res = subprocess.run(["adb", "exec-out", "screencap", "-p"], capture_output=True, timeout=5)
-        if res.returncode == 0 and res.stdout:
-            return Image.open(io.BytesIO(res.stdout))
-        return None
-    except Exception:
-        return None
-
-def analyze_screenshot_with_vision(image, prompt, api_key):
-    try:
-        buffered = io.BytesIO()
-        image.save(buffered, format="PNG")
-        img_base64 = base64.b64encode(buffered.getvalue()).decode('utf-8')
-
-        client = Groq(api_key=api_key)
-        completion = client.chat.completions.create(
-            model="llama-3.2-11b-vision-preview",
-            messages=[
-                {
-                    "role": "user",
-                    "content": [
-                        {"type": "text", "text": prompt},
-                        {"type": "image_url", "image_url": {"url": f"data:image/png;base64,{img_base64}"}}
-                    ]
-                }
-            ],
-            temperature=0.2,
-            max_tokens=500
-        )
-        return completion.choices[0].message.content
-    except Exception as e:
-        return f"Vision analysis error: {e}"
 
 # ==================== JADX DECOMPILER SETUP ====================
 def setup_jadx():
@@ -123,7 +77,7 @@ st.markdown("""
         max-width: 480px !important;
     }
     [data-testid="stHeader"], [data-testid="stToolbar"], [data-testid="stDecoration"],
-    [data-testid="manage-app-button"], [data-testid="stAppDeployButton"], header, footer {
+    [data-testid="stStatusWidget"], [data-testid="manage-app-button"], [data-testid="stAppDeployButton"], header, footer {
         display: none !important; visibility: hidden !important; height: 0px !important;
     }
     .stApp { background-color: #F8F9FA; color: #1D1B20; font-family: -apple-system, sans-serif; }
@@ -131,11 +85,6 @@ st.markdown("""
     .hero-card {
         background: #FFFFFF; border: 1px solid #E7E0EC; border-radius: 20px;
         padding: 16px; margin-top: 4px; margin-bottom: 14px; box-shadow: 0 2px 8px rgba(0,0,0,0.04);
-    }
-    .hero-title-row { display: flex; align-items: center; gap: 12px; }
-    .icon-badge {
-        background-color: #6750A4; color: #fff; width: 38px; height: 38px;
-        border-radius: 10px; display: flex; align-items: center; justify-content: center;
     }
     .hero-title { font-size: 20px; font-weight: 800; color: #1D1B20; }
     .hero-sub { font-size: 13px; color: #49454F; line-height: 1.4; margin-top: 6px; }
@@ -148,7 +97,7 @@ st.markdown("""
     div.stButton > button { background: #6750A4 !important; color: #FFFFFF !important; border: none !important; border-radius: 100px !important; padding: 8px 16px !important; font-size: 14px !important; font-weight: 600 !important; width: 100%; min-height: 42px !important; }
     .secondary-btn button { background: #31111D !important; color: #FFD8E4 !important; }
 
-    /* ---- RADAR SCANNER ANIMATION ---- */
+    /* RADAR SCANNER ANIMATION */
     .scanner-box {
         background: #FFFFFF; color: #21005D; padding: 24px 16px; border-radius: 24px;
         text-align: center; margin-top: 10px; margin-bottom: 16px; border: 1px solid #E7E0EC;
@@ -179,12 +128,12 @@ st.markdown("""
     .chip-ok { background: #E6F4EA; color: #0B3B12; }
     
     .report-card { border-radius: 16px; padding: 16px; margin-bottom: 12px; }
-    .report-card-title { display: flex; align-items: center; gap: 10px; font-weight: 800; font-size: 15px; margin-bottom: 10px; }
+    .report-card-title { font-weight: 800; font-size: 15px; margin-bottom: 10px; }
     .report-card-body { font-size: 13.5px; line-height: 1.5; }
     .cmd-box { background-color: #1D1B20; color: #E6E1E5; padding: 8px 12px; border-radius: 8px; font-family: monospace; font-size: 11px; word-break: break-all; margin: 8px 0; }
     
     .hunter-card { background: #1D1B20; color: #E6E1E5; border-left: 4px solid #D0BCFF; border-radius: 16px; padding: 16px; margin-bottom: 12px; }
-    .hunter-title { display: flex; align-items: center; gap: 10px; font-weight: 800; font-size: 16px; color: #D0BCFF; margin-bottom: 12px; }
+    .hunter-title { font-weight: 800; font-size: 16px; color: #D0BCFF; margin-bottom: 12px; }
     .hunter-evidence { background: #332D41; padding: 10px; border-radius: 8px; font-size: 12.5px; margin-bottom: 10px; }
     .hunter-cmd { background: #000000; color: #00FF00; padding: 10px; border-radius: 8px; font-family: monospace; font-size: 11px; word-break: break-all; }
     .mono-block { background-color: #F8F9FA; color: #1D1B20; border: 1px solid #E7E0EC; padding: 10px 12px; border-radius: 8px; font-family: monospace; font-size: 11px; word-break: break-all; margin: 4px 0; }
@@ -193,15 +142,7 @@ st.markdown("""
 
 st.markdown("""
 <div class="hero-card">
-    <div class="hero-title-row">
-        <div class="icon-badge">
-            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#FFFFFF" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
-                <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
-                <polyline points="14 2 14 8 20 8"></polyline><line x1="16" y1="13" x2="8" y2="13"></line><line x1="16" y1="17" x2="8" y2="17"></line><polyline points="10 9 9 9 8 9"></polyline>
-            </svg>
-        </div>
-        <div class="hero-title">apk-diff</div>
-    </div>
+    <div class="hero-title">apk-diff</div>
     <div class="hero-sub">Diffs two package builds and surfaces JNI exports, GraphQL/ProtoBuf schemas, DEX class changes, databases, split bundles, third-party SDKs, exposed secrets, architectures, locales, and signing metadata.</div>
     <div class="hero-pillrow">
         <span class="hero-pill">JNI / Native</span><span class="hero-pill">SDK Ecosystem</span><span class="hero-pill">Secrets Scan</span><span class="hero-pill">Locales / ABI</span>
@@ -210,7 +151,11 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 # Initialize Session States
-for key, default in [("report_data", None), ("hunter_data", None), ("scan_mode", None), ("added_image_keys", []), ("new_data_images", {}), ("quickfacts", None), ("jadx_ready", False), ("jadx_zip_bytes", None)]:
+for key, default in [
+    ("report_data", None), ("hunter_data", None), ("scan_mode", None),
+    ("added_image_keys", []), ("new_data_images", {}), ("quickfacts", None),
+    ("jadx_ready", False), ("jadx_zip_bytes", None), ("new_file_bytes", None), ("new_file_name", "")
+]:
     if key not in st.session_state:
         st.session_state[key] = default
 
@@ -359,12 +304,17 @@ def inspect_entire_bundle(file_bytes):
     details["third_party_sdks"] = {name for name, sigs in SDK_SIGNATURES.items() if any(any(s.lower() in h for h in haystacks) for s in sigs)}
     return details
 
+# ==================== RESTORED FULL QUICK FACTS ====================
 def render_quickfacts(old_data, new_data, added_image_keys, new_data_images):
     old_mb, new_mb = round(old_data["total_size"] / (1024**2), 2), round(new_data["total_size"] / (1024**2), 2)
     new_sdks = new_data["third_party_sdks"] - old_data["third_party_sdks"]
+    removed_sdks = old_data["third_party_sdks"] - new_data["third_party_sdks"]
+    new_archs = new_data["architectures"] - old_data["architectures"]
+    new_locales = new_data["locales"] - old_data["locales"]
+    new_splits = new_data["splits"] - old_data["splits"]
     secrets_new = scan_for_secrets([new_data["all_strings"] - old_data["all_strings"], new_data["config_strings"] - old_data["config_strings"]])
 
-    st.markdown('<div class="section-label">QUICK FACTS</div>', unsafe_allow_html=True)
+    st.markdown('<div class="section-label">QUICK FACTS (NO AI)</div>', unsafe_allow_html=True)
     st.markdown(f"""
     <div class="tile-grid">
         <div class="tile"><div class="tile-val">{'+' if new_mb-old_mb >= 0 else ''}{round(new_mb-old_mb, 2)} MB</div><div class="tile-lbl">SIZE CHANGE</div></div>
@@ -375,15 +325,92 @@ def render_quickfacts(old_data, new_data, added_image_keys, new_data_images):
     """, unsafe_allow_html=True)
 
     chips = '<div class="chip-row">'
+    if not new_archs and not new_locales and not new_splits:
+        chips += '<span class="chip">No new arch / locales / splits</span>'
+    else:
+        for a in sorted(new_archs): chips += f'<span class="chip">New arch: {sanitize(a)}</span>'
+        for l in sorted(new_locales)[:5]: chips += f'<span class="chip">New locale: {sanitize(l)}</span>'
+        for s in sorted(new_splits): chips += f'<span class="chip">Split: {sanitize(s)}</span>'
+        
     if secrets_new: chips += '<span class="chip chip-warn">Possible exposed secrets found</span>'
     else: chips += '<span class="chip chip-ok">No hardcoded secrets matched</span>'
     chips += '</div>'
     st.markdown(chips, unsafe_allow_html=True)
 
+    if secrets_new:
+        with st.expander(f"Potential exposed secrets ({len(secrets_new)})"):
+            for s in sorted(secrets_new):
+                st.markdown(f'<div class="mono-block">{sanitize(s)}</div>', unsafe_allow_html=True)
+
+    if added_image_keys:
+        with st.expander("Newly Added Graphic Previews"):
+            img_cols = st.columns(min(len(added_image_keys[:4]), 4))
+            for idx, img_key in enumerate(added_image_keys[:4]):
+                with img_cols[idx]:
+                    try:
+                        image = Image.open(io.BytesIO(new_data_images[img_key]))
+                        st.image(image, caption=img_key[:15], width=70)
+                    except: pass
+
+    with st.expander("Third-party SDK ecosystem"):
+        if new_sdks or removed_sdks or new_data["third_party_sdks"]:
+            if new_sdks:
+                st.markdown("**Newly added:**")
+                st.markdown('<div class="chip-row">' + "".join(f'<span class="chip chip-ok">{sanitize(s)}</span>' for s in sorted(new_sdks)) + '</div>', unsafe_allow_html=True)
+            if removed_sdks:
+                st.markdown("**Removed:**")
+                st.markdown('<div class="chip-row">' + "".join(f'<span class="chip chip-warn">{sanitize(s)}</span>' for s in sorted(removed_sdks)) + '</div>', unsafe_allow_html=True)
+            st.markdown("**All SDKs detected in new build:**")
+            st.markdown('<div class="chip-row">' + "".join(f'<span class="chip">{sanitize(s)}</span>' for s in sorted(new_data["third_party_sdks"])) + '</div>', unsafe_allow_html=True)
+        else:
+            st.markdown('<span class="chip chip-ok">No third-party SDKs detected</span>', unsafe_allow_html=True)
+
+    with st.expander("Size breakdown by category (new build)"):
+        cats = sorted(new_data["category_sizes"].items(), key=lambda x: -x[1])
+        for cat, size in cats:
+            mb = round(size / (1024 * 1024), 2)
+            if mb > 0.01: st.markdown(f"**{sanitize(cat)}** — {mb} MB")
+
+    with st.expander("Signing & packaging metadata"):
+        sign_new = new_data["signing_info"]
+        if sign_new:
+            for s in sorted(sign_new): st.markdown(f"- {sanitize(s)}")
+        if new_data["architectures"]:
+            st.markdown(f"**Architectures:** {', '.join(sorted(new_data['architectures']))}")
+
     added_ui = sorted(new_data["ui_strings"] - old_data["ui_strings"])
-    if added_ui:
-        with st.expander(f"New UI Text Labels ({len(added_ui)})"):
-            for s in added_ui[:100]: st.markdown(f"- {sanitize(s)}")
+    removed_ui = sorted(old_data["ui_strings"] - new_data["ui_strings"])
+    
+    with st.expander(f"New UI Text Labels ({len(added_ui)})"):
+        if added_ui or removed_ui:
+            full_ui_export = f"=== ADDED UI TEXTS ({len(added_ui)}) ===\n" + "\n".join(added_ui) + f"\n\n=== REMOVED UI TEXTS ({len(removed_ui)}) ===\n" + "\n".join(removed_ui)
+            st.download_button("Download Full UI Text Diff", data=full_ui_export, file_name="ui_text_diff.txt", mime="text/plain", use_container_width=True)
+
+            ui_search = st.text_input("Search UI Texts:", placeholder="Type to filter...", key="ui_search_key")
+            if ui_search.strip():
+                sq = ui_search.strip().lower()
+                filt_added = [s for s in added_ui if sq in s.lower()]
+                filt_rem = [s for s in removed_ui if sq in s.lower()]
+                for s in filt_added[:150]: st.markdown(f"- {sanitize(s)}")
+                for s in filt_rem[:150]: st.markdown(f"- ~~{sanitize(s)}~~")
+            else:
+                for s in added_ui[:150]: st.markdown(f"- {sanitize(s)}")
+        else:
+            st.markdown("_No new UI text detected._")
+
+    with st.expander("Raw string diff — unfiltered (no AI)"):
+        raw_added = sorted((new_data["all_strings"] | new_data["config_strings"]) - (old_data["all_strings"] | old_data["config_strings"]))
+        raw_removed = sorted((old_data["all_strings"] | old_data["config_strings"]) - (new_data["all_strings"] | new_data["config_strings"]))
+
+        full_raw_export = f"=== ADDED ({len(raw_added)}) ===\n" + "\n".join(raw_added) + f"\n\n=== REMOVED ({len(raw_removed)}) ===\n" + "\n".join(raw_removed)
+        st.download_button("Download Raw Strings Diff", data=full_raw_export, file_name="raw_strings_diff.txt", mime="text/plain", use_container_width=True)
+
+        raw_search = st.text_input("Search Raw Strings:", placeholder="Type to filter...", key="raw_search_key")
+        if raw_search.strip():
+            sq_raw = raw_search.strip().lower()
+            for s in [x for x in raw_added if sq_raw in x.lower()][:150]: st.markdown(f'<div class="mono-block">{sanitize(s)}</div>', unsafe_allow_html=True)
+        else:
+            for s in raw_added[:150]: st.markdown(f'<div class="mono-block">{sanitize(s)}</div>', unsafe_allow_html=True)
 
 def render_standard_dashboard(report_data):
     st.markdown(f"""
@@ -411,23 +438,6 @@ def render_hunter_dashboard(hunter_data):
             <div class="hunter-cmd">$ {sanitize(cmd)}</div>
         </div>
         ''', unsafe_allow_html=True)
-        
-        col1, col2 = st.columns(2)
-        with col1:
-            if st.button(f"⚡ Run Command", key=f"run_{idx}"):
-                with st.spinner("Executing ADB command..."):
-                    output = execute_adb_command(cmd)
-                    st.code(output, language="bash")
-        with col2:
-            if st.button(f"📸 Snap Screen & Analyze", key=f"snap_{idx}"):
-                with st.spinner("Capturing live phone screen..."):
-                    img = capture_device_screenshot()
-                    if img:
-                        st.image(img, caption="Live Device Screenshot", use_container_width=True)
-                        with st.spinner("Analyzing UI with AI Vision..."):
-                            prompt = f"Inspect this screen. Did activating the feature '{feat_name}' cause a new UI element or screen to open?"
-                            analysis = analyze_screenshot_with_vision(img, prompt, st.secrets["GROQ_API_KEY"])
-                            st.info(f"**AI Vision Verdict:**\n\n{analysis}")
 
 # ==================== MAIN UI FLOW ====================
 if st.session_state.report_data or st.session_state.hunter_data:
@@ -459,7 +469,10 @@ if st.session_state.report_data or st.session_state.hunter_data:
         
     if st.button("Start New Scan", use_container_width=True):
         st.session_state.report_data = st.session_state.hunter_data = st.session_state.scan_mode = None
+        st.session_state.jadx_ready = False
+        st.session_state.jadx_zip_bytes = None
         st.rerun()
+
 else:
     old_file = st.file_uploader("Old Version (.apk, .aab, .apkm)", type=["apk", "aab", "xapk", "apks", "apkm", "zip"], accept_multiple_files=False)
     new_file = st.file_uploader("New Version (.apk, .aab, .apkm)", type=["apk", "aab", "xapk", "apks", "apkm", "zip"], accept_multiple_files=False)
@@ -494,7 +507,6 @@ else:
             </div>
             """, unsafe_allow_html=True)
             
-            # Tiny delay forces Streamlit web socket to render the animation before CPU processing starts
             time.sleep(0.1)
 
             old_data = inspect_entire_bundle(old_file.read())
@@ -515,9 +527,9 @@ else:
 
             diff_summary = f"""
             SIZE CHANGE: {round(new_data["total_size"]/(1024**2) - old_data["total_size"]/(1024**2), 2)} MB
-            NEW LAYOUTS: {list(new_data["layouts"] - old_data["layouts"])[:20]}
-            NEW UI TEXT: {list(new_data["ui_strings"] - old_data["ui_strings"])[:30]}
-            NEW PERMISSIONS: {list(new_data["permissions"] - old_data["permissions"])[:10]}
+            NEW LAYOUTS: {sorted(list(new_data["layouts"] - old_data["layouts"]))[:25]}
+            NEW UI TEXT: {sorted(list(new_data["ui_strings"] - old_data["ui_strings"]))[:35]}
+            NEW PERMISSIONS: {sorted(list(new_data["permissions"] - old_data["permissions"]))[:10]}
             """
             
             client = Groq(api_key=st.secrets["GROQ_API_KEY"])
@@ -526,7 +538,7 @@ else:
                 prompt = f"""
                 You are an investigative mobile app software journalist finding hidden features in an APK diff.
                 Correlate the provided layouts, UI text, and feature flags to deduce unreleased features.
-                CRITICAL INSTRUCTION: Output perfectly valid JSON. NEVER use double quotes (") inside JSON text values. Use single quotes (') instead.
+                Output ONLY valid JSON. NEVER use double quotes (") inside JSON text values. Use single quotes (') instead.
 
                 JSON Schema required:
                 {{
@@ -546,7 +558,7 @@ else:
             else:
                 prompt = f"""
                 You are a lead mobile software investigator analyzing an APK diff.
-                CRITICAL INSTRUCTION: Output perfectly valid JSON. NEVER use double quotes (") inside JSON text values. Use single quotes (') instead.
+                Output ONLY valid JSON. NEVER use double quotes (") inside JSON text values. Use single quotes (') instead.
 
                 JSON Schema required:
                 {{
@@ -561,10 +573,11 @@ else:
                 """
 
             try:
+                # LOCKED AT TEMPERATURE 0.0 FOR DETERMINISTIC AI OUTPUT
                 comp = client.chat.completions.create(
                     model="llama-3.1-8b-instant",
                     messages=[{"role": "user", "content": prompt}],
-                    temperature=0.1,
+                    temperature=0.0,
                     max_tokens=1000,
                     response_format={"type": "json_object"}
                 )
