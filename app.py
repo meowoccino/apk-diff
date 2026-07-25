@@ -2,13 +2,11 @@ import streamlit as st
 import zipfile
 import io
 import re
+from PIL import Image
 from groq import Groq
-from androguard.core.bytecodes.axml import AXMLPrinter
-from androguard.core.bytecodes.arsc import ARSCParser
-import xml.etree.ElementTree as ET
 
-# Page Setup & Styling
-st.set_page_config(page_title="APK Teardown Studio", page_icon="📱", layout="centered")
+# Page Setup & Clean Styling
+st.set_page_config(page_title="Universal APK Teardown Studio", page_icon="📱", layout="centered")
 
 st.markdown("""
 <style>
@@ -28,7 +26,7 @@ st.markdown("""
         font-size: 22px;
         font-weight: 700;
         color: #6750A4;
-        margin-bottom: 4px;
+        margin-bottom: 2px;
     }
     .sub-text {
         font-size: 13px;
@@ -38,132 +36,187 @@ st.markdown("""
 </style>
 """, unsafe_allow_html=True)
 
-st.markdown('<div class="title-text">📱 APK & Bundle Teardown Studio</div>', unsafe_allow_html=True)
-st.markdown('<div class="sub-text">Journalist-grade scanner: Decodes binary Manifests, resource tables, and layout additions.</div>', unsafe_allow_html=True)
+st.markdown('<div class="title-text">📱 Universal APK & Bundle Teardown</div>', unsafe_allow_html=True)
+st.markdown('<div class="sub-text">Deep-scan any Android app or game bundle for unreleased features, new screens, deep links, permissions, and visual changes.</div>', unsafe_allow_html=True)
 
+# Mode Selector
+analysis_mode = st.selectbox(
+    "Select Teardown Focus:",
+    [
+        "📰 Tech Reporter Mode (Features, Flags & Hidden Screens)",
+        "🛡️ Security & Privacy Mode (Permissions, Trackers & Access)",
+        "⚡ Performance & Code Mode (Size Bloat, SDKs & Libraries)"
+    ]
+)
+
+# Upload Slots
 col1, col2 = st.columns(2)
 with col1:
     old_file = st.file_uploader("Old Version (.apk / .aab)", type=["apk", "aab"])
 with col2:
     new_file = st.file_uploader("New Version (.apk / .aab)", type=["apk", "aab"])
 
-def extract_manifest_components(zip_obj):
-    """Decodes binary AndroidManifest.xml into readable XML elements (activities, permissions, meta-data)."""
-    components = {"activities": set(), "permissions": set(), "meta_data": set(), "services": set()}
-    manifest_paths = [f for f in zip_obj.namelist() if f.endswith("AndroidManifest.xml")]
+def extract_binary_strings(raw_bytes):
+    """Extracts printable UTF-8 and UTF-16LE strings from binary DEX, AXML, and ARSC files."""
+    extracted = set()
     
-    for path in manifest_paths:
+    # UTF-8 / ASCII strings
+    ascii_matches = re.findall(rb'[\x20-\x7E]{4,}', raw_bytes)
+    for m in ascii_matches:
         try:
-            raw_axml = zip_obj.read(path)
-            axml = AXMLPrinter(raw_axml)
-            xml_tree = ET.fromstring(axml.get_buff())
+            decoded = m.decode('ascii', errors='ignore')
+            if len(decoded) < 120:
+                extracted.add(decoded)
+        except Exception:
+            pass
             
-            for elem in xml_tree.iter():
-                tag = elem.tag.split('}')[-1] if '}' in elem.tag else elem.tag
-                name = elem.attrib.get('{http://schemas.android.com/apk/res/android}name') or elem.attrib.get('name')
-                value = elem.attrib.get('{http://schemas.android.com/apk/res/android}value') or elem.attrib.get('value')
-                
-                if name:
-                    if tag == "activity" or tag == "activity-alias":
-                        components["activities"].add(name)
-                    elif tag == "uses-permission" or tag == "permission":
-                        components["permissions"].add(name)
-                    elif tag == "service" or tag == "receiver":
-                        components["services"].add(name)
-                    elif tag == "meta-data":
-                        components["meta_data"].add(f"{name} = {value}" if value else name)
-        except Exception:
-            pass
-    return components
-
-def extract_resource_strings(zip_obj):
-    """Decodes binary resources.arsc table to extract clean user-facing strings."""
-    strings = set()
-    arsc_paths = [f for f in zip_obj.namelist() if f.endswith("resources.arsc")]
-    
-    for path in arsc_paths:
+    # UTF-16LE strings (common in Android binary resource pools)
+    utf16_matches = re.findall(rb'(?:[\x20-\x7E]\x00){4,}', raw_bytes)
+    for m in utf16_matches:
         try:
-            raw_arsc = zip_obj.read(path)
-            arsc = ARSCParser(raw_arsc)
-            for pkg in arsc.get_packages_names():
-                for s in arsc.get_strings_resources():
-                    cleaned = s.strip()
-                    if len(cleaned) > 3 and not cleaned.startswith("res/"):
-                        strings.add(cleaned)
+            decoded = m.decode('utf-16le', errors='ignore')
+            if len(decoded) < 120:
+                extracted.add(decoded)
         except Exception:
             pass
-    return strings
+            
+    return extracted
 
 def inspect_bundle(file_bytes):
-    """Performs deep teardown decoding on an uploaded package."""
-    details = {"files": set(), "total_size": 0, "layouts": set()}
-    with zipfile.ZipFile(io.BytesIO(file_bytes), "r") as z:
-        for name in z.namelist():
-            info = z.getinfo(name)
-            details["files"].add(name)
-            details["total_size"] += info.file_size
-            if "layout" in name and name.endswith(".xml"):
-                details["layouts"].add(name.split('/')[-1])
-        
-        components = extract_manifest_components(z)
-        strings = extract_resource_strings(z)
-        
-    return details, components, strings
+    """Deep inspects any APK or AAB archive, extracting files, strings, deep links, and preview images."""
+    details = {
+        "files": set(),
+        "total_size": 0,
+        "strings": set(),
+        "activities": set(),
+        "permissions": set(),
+        "deep_links": set(),
+        "images": {}
+    }
+    
+    try:
+        with zipfile.ZipFile(io.BytesIO(file_bytes), "r") as z:
+            for name in z.namelist():
+                info = z.getinfo(name)
+                details["files"].add(name)
+                details["total_size"] += info.file_size
+                
+                # Capture preview images (PNG, WebP, JPG)
+                lower_name = name.lower()
+                if any(lower_name.endswith(ext) for ext in ['.png', '.webp', '.jpg', '.jpeg']):
+                    if "ic_launcher" not in lower_name and info.file_size < 1024 * 1024:  # under 1MB
+                        try:
+                            img_data = z.read(name)
+                            details["images"][name.split('/')[-1]] = img_data
+                        except Exception:
+                            pass
 
-if st.button("🚀 Analyze & Run Teardown", type="primary", use_container_width=True):
+                # Scan binary DEX code, Manifests, and String pools
+                if name.endswith(".dex") or name.endswith(".xml") or name.endswith(".arsc"):
+                    try:
+                        raw_bytes = z.read(name)
+                        tokens = extract_binary_strings(raw_bytes)
+                        
+                        for token in tokens:
+                            details["strings"].add(token)
+                            
+                            # Filter specific Android components
+                            if "permission." in token.lower():
+                                details["permissions"].add(token)
+                            elif "activity" in token.lower() or "screen" in token.lower():
+                                details["activities"].add(token)
+                            elif any(proto in token.lower() for proto in ["http://", "https://", "scheme://", "content://"]):
+                                details["deep_links"].add(token)
+                    except Exception:
+                        pass
+    except Exception as e:
+        st.error(f"Error reading package archive: {e}")
+        
+    return details
+
+# Run Analysis
+if st.button("🚀 Analyze & Generate Teardown", type="primary", use_container_width=True):
     if "GROQ_API_KEY" not in st.secrets or not st.secrets["GROQ_API_KEY"]:
         st.error("GROQ_API_KEY is missing from Streamlit Secrets!")
     elif not old_file or not new_file:
         st.error("Please upload both Old and New package files.")
     else:
-        with st.spinner("Decoding binary XMLs, parsing string tables, and querying Groq..."):
+        with st.spinner("Analyzing package diffs, rendering image previews, and running AI..."):
             old_bytes = old_file.read()
             new_bytes = new_file.read()
             
-            old_details, old_comp, old_strings = inspect_bundle(old_bytes)
-            new_details, new_comp, new_strings = inspect_bundle(new_bytes)
+            old_data = inspect_bundle(old_bytes)
+            new_data = inspect_bundle(new_bytes)
             
-            # Precise Diffs
-            added_activities = list(new_comp["activities"] - old_comp["activities"])
-            added_permissions = list(new_comp["permissions"] - old_comp["permissions"])
-            added_meta = list(new_comp["meta_data"] - old_comp["meta_data"])
-            added_strings = list(new_strings - old_strings)
-            added_layouts = list(new_details["layouts"] - old_details["layouts"])
+            # Compute package diffs
+            added_files = list(new_data["files"] - old_data["files"])
+            removed_files = list(old_data["files"] - new_data["files"])
+            added_strings = list(new_data["strings"] - old_data["strings"])
+            added_activities = list(new_data["activities"] - old_data["activities"])
+            added_permissions = list(new_data["permissions"] - old_data["permissions"])
+            added_deep_links = list(new_data["deep_links"] - old_data["deep_links"])
             
-            old_size_mb = round(old_details["total_size"] / (1024 * 1024), 2)
-            new_size_mb = round(new_details["total_size"] / (1024 * 1024), 2)
+            # Detect newly added image files for visual preview
+            added_image_keys = [k for k in new_data["images"].keys() if k not in old_data["images"]]
+            
+            old_size_mb = round(old_data["total_size"] / (1024 * 1024), 2)
+            new_size_mb = round(new_data["total_size"] / (1024 * 1024), 2)
             size_diff_mb = round(new_size_mb - old_size_mb, 2)
             
+            # Display Image Previews if available
+            if added_image_keys:
+                st.subheader("🖼️ Newly Added Visual Assets")
+                img_cols = st.columns(min(len(added_image_keys[:4]), 4))
+                for idx, img_key in enumerate(added_image_keys[:4]):
+                    with img_cols[idx]:
+                        try:
+                            image = Image.open(io.BytesIO(new_data["images"][img_key]))
+                            st.image(image, caption=img_key[:20], use_column_width=True)
+                        except Exception:
+                            pass
+
+            # Prioritize interest tokens
+            prioritized_tokens = sorted(
+                added_strings, 
+                key=lambda x: any(k in x.lower() for k in ['flag', 'enable', 'config', 'opt', 'feature', 'ui', 'v2', 'beta']), 
+                reverse=True
+            )[:120]
+            
             diff_summary = f"""
-            OLD FILE: {old_file.name} ({old_size_mb} MB)
-            NEW FILE: {new_file.name} ({new_size_mb} MB) | SIZE DIFF: {size_diff_mb} MB
+            OLD PACKAGE: {old_file.name} ({old_size_mb} MB)
+            NEW PACKAGE: {new_file.name} ({new_size_mb} MB)
+            SIZE CHANGE: {size_diff_mb} MB
+            SELECTED FOCUS MODE: {analysis_mode}
             
-            NEWLY ADDED MANIFEST ACTIVITIES / SCREENS ({len(added_activities)}):
+            NEWLY ADDED SCREENS / ACTIVITIES ({len(added_activities)}):
             {added_activities[:30]}
-            
-            NEWLY ADDED META-DATA / FEATURE FLAGS ({len(added_meta)}):
-            {added_meta[:30]}
             
             NEWLY ADDED PERMISSIONS ({len(added_permissions)}):
             {added_permissions[:20]}
             
-            NEWLY ADDED UI LAYOUT FILES ({len(added_layouts)}):
-            {added_layouts[:30]}
+            NEWLY ADDED DEEP LINKS / ROUTES ({len(added_deep_links)}):
+            {added_deep_links[:20]}
             
-            NEW STRINGS FROM RESOURCES ({len(added_strings)} total, showing top 50):
-            {added_strings[:50]}
+            ADDED FILE PATHS ({len(added_files)} total, top 40 shown):
+            {added_files[:40]}
+            
+            REMOVED FILE PATHS ({len(removed_files)} total, top 40 shown):
+            {removed_files[:40]}
+            
+            NEW INTERNAL TOKENS & STRINGS ({len(added_strings)} total, top 120 shown):
+            {prioritized_tokens}
             """
             
             client = Groq(api_key=st.secrets["GROQ_API_KEY"])
             
             prompt = f"""
-            You are an investigative tech reporter conducting a professional APK Teardown (like 9to5Google or Android Authority).
-            Examine these decoded Manifest and String diffs to reveal what unreleased features, redesigns, or hidden updates the developers are preparing.
+            You are an expert Android tech investigator conducting a thorough APK Teardown on an Android app or game package.
+            Analyze these package diffs according to the requested focus mode: '{analysis_mode}'.
             
-            Output strictly raw, clean HTML with inline CSS styled cleanly with Material Design 3 (MD3) guidelines.
+            Output strictly raw, clean HTML with inline CSS styled according to Material Design 3 (MD3) guidelines.
             Do NOT wrap your output in markdown codeblocks (do NOT use ```html or ```).
             
-            Styling guidelines:
+            Styling rules:
             - Standard Cards: background-color: #F7F2FA; border-radius: 18px; padding: 16px; margin-bottom: 16px; border: 1px solid #CAC4D0;
             - Unreleased Spotlight Card: background-color: #FFD8E4; color: #31111D; border-radius: 20px; padding: 16px; margin-bottom: 16px;
             - AI Overview Card: background-color: #EADDFF; color: #21005D; border-radius: 18px; padding: 16px; margin-bottom: 16px;
@@ -171,12 +224,14 @@ if st.button("🚀 Analyze & Run Teardown", type="primary", use_container_width=
             - Stat Badges: background-color: #CCE8E1; color: #05211B; font-weight: bold; padding: 4px 10px; border-radius: 100px; font-size: 11px; display: inline-block; margin-right: 4px;
 
             Your report MUST include:
-            1. **Diff Stat Badges**: Showing size change, new activities count, new strings count, and layout additions.
-            2. **Executive Teardown Verdict**: A clear summary explaining what features are in active development.
-            3. **Unreleased Clues & Activation Commands**: Connect new strings, hidden activities, and meta-data flags into cohesive feature predictions. Provide realistic copyable shell commands (`adb shell device_config put...` or `adb shell am start...`).
-            4. **Detailed Additions Breakdown**: Grouped sections for New Screens/Activities, New User Strings, and New Permissions.
+            1. **Update Impact Rating (1 to 10)**: Display an overall significance badge at the top (e.g., "Impact Rating: 8/10 - Major Feature Update").
+            2. **Diff Stat Pills**: Size change, added screens count, new tokens count, and file diff totals.
+            3. **Executive Teardown Verdict**: Clear synthesis tailored to '{analysis_mode}'.
+            4. **Unreleased Clues & Activation Commands**: Connect new strings, hidden activities, and flags into feature predictions. Provide copyable shell commands (`adb shell device_config put...` or `adb shell am start...`).
+            5. **Deep Link Routes & Permissions**: List new URL schemes or sensitive permission additions.
+            6. **Master One-Tap Activation Block**: A single command block containing all activation commands combined for easy copying.
 
-            RAW DECODED DIFF DATA:
+            RAW PACKAGE DIFF DATA:
             {diff_summary}
             """
             
