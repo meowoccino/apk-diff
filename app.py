@@ -745,7 +745,7 @@ if st.session_state.report_html:
     st.markdown(st.session_state.report_html, unsafe_allow_html=True)
     
     # --- JADX CODE EXTRACTION ---
-    st.markdown('<div class="section-label">DEEP CODE EXTRACTION</div>', unsafe_allow_html=True)
+    st.markdown("<div style='margin-top: 24px;'></div>", unsafe_allow_html=True)
     if st.button("Extract Java Source Code", use_container_width=True):
         zip_bytes = decompile_apk(st.session_state.new_file_bytes, st.session_state.new_file_name)
         if zip_bytes:
