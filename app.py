@@ -134,19 +134,19 @@ st.markdown("""
     .chip-ok { background: #E6F4EA; color: #0B3B12; }
     
     .report-card { border-radius: 16px; padding: 16px; margin-bottom: 12px; }
-    .report-card-title { font-weight: 800; font-size: 15px; margin-bottom: 10px; }
+    .report-card-title { display: flex; align-items: center; gap: 10px; font-weight: 800; font-size: 15px; margin-bottom: 10px; }
     .report-card-body { font-size: 13.5px; line-height: 1.5; }
     .cmd-box { background-color: #1D1B20; color: #E6E1E5; padding: 8px 12px; border-radius: 8px; font-family: monospace; font-size: 11px; word-break: break-all; margin: 8px 0; }
     
     .hunter-card { background: #1D1B20; color: #E6E1E5; border-left: 4px solid #D0BCFF; border-radius: 16px; padding: 16px; margin-bottom: 12px; }
-    .hunter-title { font-weight: 800; font-size: 16px; color: #D0BCFF; margin-bottom: 12px; }
+    .hunter-title { display: flex; align-items: center; gap: 10px; font-weight: 800; font-size: 16px; color: #D0BCFF; margin-bottom: 12px; }
     .hunter-evidence { background: #332D41; padding: 10px; border-radius: 8px; font-size: 12.5px; margin-bottom: 10px; }
     .hunter-cmd { background: #000000; color: #00FF00; padding: 10px; border-radius: 8px; font-family: monospace; font-size: 11px; word-break: break-all; }
     .mono-block { background-color: #F8F9FA; color: #1D1B20; border: 1px solid #E7E0EC; padding: 10px 12px; border-radius: 8px; font-family: monospace; font-size: 11px; word-break: break-all; margin: 4px 0; }
 </style>
 """, unsafe_allow_html=True)
 
-# HERO CARD WITH MAIN ICON
+# HERO CARD WITH VECTOR ICON
 st.markdown("""
 <div class="hero-card">
     <div class="hero-title-row">
@@ -261,10 +261,11 @@ def scan_for_secrets(string_sets):
                     found.add(f"{sec_name}: {item}")
     return found
 
+# FIX: SEARCH FOR ARCHITECTURES ANYWHERE IN RELATIVE PATHS TO PREVENT FALSE ACCUMULATION
 def detect_architectures(files):
     archs = set()
     for f in files:
-        m = re.match(r'^lib/([^/]+)/', f)
+        m = re.search(r'(?:^|/)lib/([^/]+)/', f)
         if m: archs.add(m.group(1))
     return archs
 
@@ -437,6 +438,7 @@ def render_quickfacts(old_data, new_data, added_image_keys, new_data_images):
         else:
             for s in raw_added[:150]: st.markdown(f'<div class="mono-block">{sanitize(s)}</div>', unsafe_allow_html=True)
 
+# RESTORED VECTOR ICONS ON REPORT CARDS
 def render_standard_dashboard(report_data):
     st.markdown(f"""
     <div class="chip-row">
@@ -444,13 +446,51 @@ def render_standard_dashboard(report_data):
         <span class="chip">New Flags: <b>{report_data.get("num_flags", 0)}</b></span>
         <span class="chip">New JNI: <b>{report_data.get("num_jni", 0)}</b></span>
     </div>
-    <div class="report-card" style="background-color: #F3EDF7; border-left: 4px solid #6750A4;"><div class="report-card-title">AI Analysis & Executive Summary</div><div class="report-card-body">{sanitize(report_data.get("summary", ""))}</div></div>
-    <div class="report-card" style="background-color: #FFD8E4; border-left: 4px solid #B12B58;"><div class="report-card-title">Unreleased Feature Blueprints</div><div class="report-card-body">{sanitize(str(report_data.get("blueprints", "")))}<div class="cmd-box">{sanitize(report_data.get("command", ""))}</div></div></div>
-    <div class="report-card" style="background-color: #FFF3E0; border-left: 4px solid #E8A33D;"><div class="report-card-title">Security & Packaging Assessment</div><div class="report-card-body">{sanitize(report_data.get("security", ""))}</div></div>
+    
+    <div class="report-card" style="background-color: #F3EDF7; border-left: 4px solid #6750A4;">
+        <div class="report-card-title">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#6750A4" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M12 2v4M12 18v4M4.93 4.93l2.83 2.83M16.24 16.24l2.83 2.83M2 12h4M18 12h4M4.93 19.07l2.83-2.83M16.24 7.76l2.83-2.83"/>
+            </svg>
+            <span>AI Analysis & Executive Summary</span>
+        </div>
+        <div class="report-card-body">{sanitize(report_data.get("summary", ""))}</div>
+    </div>
+    
+    <div class="report-card" style="background-color: #FFD8E4; border-left: 4px solid #B12B58;">
+        <div class="report-card-title">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#B12B58" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+                <polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"></polygon>
+            </svg>
+            <span>Unreleased Feature Blueprints</span>
+        </div>
+        <div class="report-card-body">{sanitize(str(report_data.get("blueprints", "")))}<div class="cmd-box">{sanitize(report_data.get("command", ""))}</div></div>
+    </div>
+    
+    <div class="report-card" style="background-color: #FFF3E0; border-left: 4px solid #E8A33D;">
+        <div class="report-card-title">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#E8A33D" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"></path>
+            </svg>
+            <span>Security & Packaging Assessment</span>
+        </div>
+        <div class="report-card-body">{sanitize(report_data.get("security", ""))}</div>
+    </div>
     """, unsafe_allow_html=True)
 
+# RESTORED VECTOR ICONS ON HUNTER CARDS
 def render_hunter_dashboard(hunter_data):
-    st.markdown(f'<div class="hunter-card" style="border-left: 4px solid #D0BCFF;"><div class="hunter-title">Investigative Summary</div><div style="font-size: 13.5px; color: #E6E1E5;">{sanitize(hunter_data.get("summary", ""))}</div></div>', unsafe_allow_html=True)
+    st.markdown(f'''
+    <div class="hunter-card" style="border-left: 4px solid #D0BCFF;">
+        <div class="hunter-title">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#D0BCFF" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M12 2v4M12 18v4M4.93 4.93l2.83 2.83M16.24 16.24l2.83 2.83M2 12h4M18 12h4M4.93 19.07l2.83-2.83M16.24 7.76l2.83-2.83"/>
+            </svg>
+            <span>Investigative Summary</span>
+        </div>
+        <div style="font-size: 13.5px; color: #E6E1E5;">{sanitize(hunter_data.get("summary", ""))}</div>
+    </div>
+    ''', unsafe_allow_html=True)
     
     for idx, feat in enumerate(hunter_data.get("features", [])):
         feat_name = feat.get("name", f"Feature {idx+1}")
@@ -458,7 +498,13 @@ def render_hunter_dashboard(hunter_data):
         
         st.markdown(f'''
         <div class="hunter-card">
-            <div class="hunter-title">{sanitize(feat_name)}</div>
+            <div class="hunter-title">
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#D0BCFF" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+                    <circle cx="11" cy="11" r="8"></circle>
+                    <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
+                </svg>
+                {sanitize(feat_name)}
+            </div>
             <div class="hunter-evidence"><b>Evidence:</b><br>{sanitize(feat.get("evidence", ""))}</div>
             <div class="hunter-cmd">$ {sanitize(cmd)}</div>
         </div>
@@ -550,19 +596,27 @@ else:
             """, unsafe_allow_html=True)
             time.sleep(0.1)
 
+            # EXPANDED AI INPUT DATA LIMITS (UP TO 150 UI STRINGS & 100 LAYOUTS)
+            added_layouts = sorted(list(new_data["layouts"] - old_data["layouts"]))
+            added_ui_strings = sorted(list(new_data["ui_strings"] - old_data["ui_strings"]))
+            added_permissions = sorted(list(new_data["permissions"] - old_data["permissions"]))
+            combined_diffs = sorted(list((new_data["all_strings"] | new_data["config_strings"]) - (old_data["all_strings"] | old_data["config_strings"])))
+            feature_toggles = [t for t in combined_diffs if any(k in t.lower() for k in ['flag', 'enable', 'config', 'opt', 'toggle', 'experiment', 'beta'])]
+
             diff_summary = f"""
             SIZE CHANGE: {round(new_data["total_size"]/(1024**2) - old_data["total_size"]/(1024**2), 2)} MB
-            NEW LAYOUTS: {sorted(list(new_data["layouts"] - old_data["layouts"]))[:25]}
-            NEW UI TEXT: {sorted(list(new_data["ui_strings"] - old_data["ui_strings"]))[:35]}
-            NEW PERMISSIONS: {sorted(list(new_data["permissions"] - old_data["permissions"]))[:10]}
+            NEW XML LAYOUT SCHEMAS ({len(added_layouts)}): {added_layouts[:100]}
+            NEW UI TEXT LABELS ({len(added_ui_strings)}): {added_ui_strings[:150]}
+            NEW FEATURE FLAGS ({len(feature_toggles)}): {feature_toggles[:100]}
+            NEW PERMISSIONS ({len(added_permissions)}): {added_permissions[:30]}
             """
             
             client = Groq(api_key=st.secrets["GROQ_API_KEY"])
             
             if run_hunter:
                 prompt = f"""
-                You are an investigative mobile app software journalist finding hidden features in an APK diff.
-                Correlate the provided layouts, UI text, and feature flags to deduce unreleased features.
+                You are an investigative mobile app software journalist finding genuinely NEW unreleased features in an APK diff.
+                CRITICAL INSTRUCTION: Ignore standard Android framework code, existing UI strings, or minor translation updates. Focus strictly on novel, distinctive feature flags, unreleased layouts, and new workflow strings.
                 Output ONLY valid JSON. NEVER use double quotes (") inside JSON text values. Use single quotes (') instead.
 
                 JSON Schema required:
@@ -571,7 +625,7 @@ else:
                   "features": [
                     {{
                       "name": "Feature Name",
-                      "evidence": "State the flag, string, and layout that prove this.",
+                      "evidence": "State the specific new flag, string, and layout that prove this.",
                       "activation": "adb shell dumpsys package | grep -i feature_flag"
                     }}
                   ]
@@ -583,12 +637,13 @@ else:
             else:
                 prompt = f"""
                 You are a lead mobile software investigator analyzing an APK diff.
+                Focus strictly on brand-new code shifts, actual unreleased feature flags, and genuine risk changes.
                 Output ONLY valid JSON. NEVER use double quotes (") inside JSON text values. Use single quotes (') instead.
 
                 JSON Schema required:
                 {{
                   "summary": "3-4 concise narrative sentences explaining the technical changes.",
-                  "blueprints": "Concrete feature predictions based strictly on the data.",
+                  "blueprints": "Concrete feature predictions based strictly on the new data.",
                   "command": "An adb terminal grep command.",
                   "security": "Assessment of risks."
                 }}
@@ -602,7 +657,7 @@ else:
                     model="llama-3.1-8b-instant",
                     messages=[{"role": "user", "content": prompt}],
                     temperature=0.0,
-                    max_tokens=1000,
+                    max_tokens=1200,
                     response_format={"type": "json_object"}
                 )
                 res = json.loads(clean_json_response(comp.choices[0].message.content.strip()))
