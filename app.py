@@ -1108,7 +1108,11 @@ else:
             added_deep_links = list(new_data["deep_links"] - old_data["deep_links"])
             added_endpoints = list(new_data["endpoints"] - old_data["endpoints"])
 
-            added_ui_strings = list(new_data["ui_strings"] - old_data["ui_strings"])
+            # SMART PRE-FILTERING FOR UI STRINGS
+            raw_ui = list(new_data["ui_strings"] - old_data["ui_strings"])
+            ui_keywords = ["new", "beta", "experimental", "feature", "dialog"]
+            added_ui_strings = [s for s in raw_ui if len(s) > 15 or any(k in s.lower() for k in ui_keywords)]
+            
             added_layouts = list(new_data["layouts"] - old_data["layouts"])
             added_sdks = list(new_data["third_party_sdks"] - old_data["third_party_sdks"])
             removed_sdks = list(old_data["third_party_sdks"] - new_data["third_party_sdks"])
@@ -1125,8 +1129,11 @@ else:
             new_size_mb = round(new_data["total_size"] / (1024 * 1024), 2)
             size_diff_mb = round(new_size_mb - old_size_mb, 2)
 
-            combined_diffs = added_native[:30] + added_configs[:30] + added_general[:30] + added_annotations[:20] + added_jni[:20]
-            feature_toggles = list(set([t for t in combined_diffs if any(k in t.lower() for k in ['flag', 'enable', 'config', 'opt', 'toggle', 'experiment', 'beta'])]))
+            # SMART PRE-FILTERING FOR FEATURE FLAGS
+            combined_diffs = added_native[:200] + added_configs[:200] + added_general[:200] + added_annotations[:100] + added_jni[:100]
+            raw_toggles = list(set([t for t in combined_diffs if any(k in t.lower() for k in ['flag', 'enable', 'config', 'opt', 'toggle', 'experiment', 'beta'])]))
+            noise_prefixes = ["androidx", "com.google.android.gms", "kotlin", "java"]
+            feature_toggles = [t for t in raw_toggles if not any(t.lower().startswith(n) for n in noise_prefixes)]
 
             client = Groq(api_key=st.secrets["GROQ_API_KEY"])
 
@@ -1143,13 +1150,14 @@ else:
                 """, unsafe_allow_html=True)
 
                 hunter_summary = f"""
-                NEW XML LAYOUTS: {added_layouts[:20]}
-                NEW UI TEXT: {added_ui_strings[:30]}
-                NEW FEATURE FLAGS: {feature_toggles[:30]}
+                NEW XML LAYOUTS: {added_layouts[:150]}
+                NEW UI TEXT: {added_ui_strings[:200]}
+                NEW FEATURE FLAGS: {feature_toggles[:200]}
                 """
 
                 prompt = f"""
                 You are an investigative mobile app software journalist finding hidden features in an APK diff.
+                CRITICAL: Ignore standard Android framework code, existing UI strings, or minor translation updates. Focus STRICTLY on novel, distinctive feature flags, unreleased layout XMLs, and cohesive new workflow strings. If a feature does not have matching evidence across flags and layouts, do not include it.
                 Correlate the provided layouts, UI text, and feature flags to deduce unreleased features.
                 Do NOT include unescaped raw quotes inside JSON values.
                 Respond ONLY in valid JSON format with no markdown wrappers or backticks.
@@ -1174,8 +1182,8 @@ else:
                     completion = client.chat.completions.create(
                         model="llama-3.1-8b-instant",
                         messages=[{"role": "user", "content": prompt}],
-                        temperature=0.1,
-                        max_tokens=1000,
+                        temperature=0.0,
+                        max_tokens=2500,
                     )
                     raw_res = completion.choices[0].message.content.strip()
                     cleaned = clean_json_response(raw_res)
@@ -1202,22 +1210,23 @@ else:
 
                 diff_summary = f"""
                 SIZE CHANGE: {size_diff_mb} MB
-                FEATURE FLAGS: {feature_toggles[:15]}
-                JNI EXPORTS: {added_jni[:15]}
-                DEMANGLED C++ SYMBOLS: {added_native[:15]}
-                GRAPHQL: {added_graphql[:10]}
-                PROTOBUFS: {added_protobufs[:10]}
-                CLASSES: {added_classes[:15]}
-                ENDPOINTS: {added_endpoints[:10]}
-                PERMISSIONS: {added_permissions[:10]}
+                FEATURE FLAGS: {feature_toggles[:150]}
+                JNI EXPORTS: {added_jni[:100]}
+                DEMANGLED C++ SYMBOLS: {added_native[:100]}
+                GRAPHQL: {added_graphql[:100]}
+                PROTOBUFS: {added_protobufs[:100]}
+                CLASSES: {added_classes[:100]}
+                ENDPOINTS: {added_endpoints[:100]}
+                PERMISSIONS: {added_permissions[:50]}
                 NEW SDKS: {added_sdks}
                 REMOVED SDKS: {removed_sdks}
-                SECRETS: {secrets_found[:10]}
-                NEW UI COPY: {added_ui_strings[:15]}
+                SECRETS: {secrets_found[:50]}
+                NEW UI COPY: {added_ui_strings[:150]}
                 """
 
                 prompt = f"""
                 You are a lead mobile software investigator analyzing an APK diff.
+                CRITICAL: Ignore standard Android framework code, existing UI strings, or minor translation updates. Focus STRICTLY on novel, distinctive feature flags, unreleased layout XMLs, and cohesive new workflow strings. If a feature does not have matching evidence across flags and layouts, do not include it.
                 Analyze this diff data and respond ONLY in valid JSON format with no markdown wrappers or backticks.
                 Do NOT label standard WebRTC audio/video features or bitrate config keys as security risks. Say 'No security risks detected.' unless actual exposed secrets, unencrypted endpoints, or risky permissions exist.
                 Do NOT include unescaped raw quotes inside JSON values.
@@ -1238,8 +1247,8 @@ else:
                     completion = client.chat.completions.create(
                         model="llama-3.1-8b-instant",
                         messages=[{"role": "user", "content": prompt}],
-                        temperature=0.1,
-                        max_tokens=1500,
+                        temperature=0.0,
+                        max_tokens=2500,
                     )
                     raw_res = completion.choices[0].message.content.strip()
                     cleaned = clean_json_response(raw_res)
