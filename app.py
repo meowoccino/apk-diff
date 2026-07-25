@@ -8,12 +8,13 @@ import ctypes
 from PIL import Image
 from groq import Groq
 
-# Page Setup & Styling
-st.set_page_config(page_title="Universal APK Teardown Studio", page_icon="📱", layout="centered")
+# Page Setup
+st.set_page_config(page_title="APK Teardown Studio", page_icon="⚡", layout="centered")
 
+# Material Design 3 Styling
 st.markdown("""
 <style>
-    /* Hide top header, toolbar, footer, and owner button */
+    /* Hide top header, toolbar, footer, and Streamlit clutter */
     [data-testid="stHeader"], 
     [data-testid="stToolbar"], 
     [data-testid="stDecoration"], 
@@ -29,52 +30,123 @@ st.markdown("""
         padding: 0px !important;
     }
 
-    /* Force content to top of mobile screen */
+    /* Force content to start right at the top on mobile */
     .main .block-container {
-        padding-top: 0.2rem !important;
+        padding-top: 0.5rem !important;
         padding-bottom: 2rem !important;
+        max-width: 500px !important;
     }
 
+    /* Global MD3 Surface Palette */
     .stApp {
         background-color: #FEF7FF;
         color: #1D1B20;
-        font-family: 'Roboto', sans-serif;
+        font-family: 'Roboto', -apple-system, BlinkMacSystemFont, sans-serif;
     }
-    
-    .title-text {
-        font-size: 22px;
+
+    /* Modern Hero Header Container */
+    .hero-card {
+        background-color: #F3EDF7;
+        border: 1px solid #E7E0EC;
+        border-radius: 24px;
+        padding: 20px 18px;
+        margin-bottom: 16px;
+        box-shadow: 0 2px 6px rgba(0,0,0,0.04);
+    }
+
+    .hero-title-row {
+        display: flex;
+        align-items: center;
+        gap: 12px;
+        margin-bottom: 6px;
+    }
+
+    .icon-badge {
+        background-color: #EADDFF;
+        color: #21005D;
+        width: 42px;
+        height: 42px;
+        border-radius: 12px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        flex-shrink: 0;
+    }
+
+    .hero-title {
+        font-size: 20px;
         font-weight: 700;
-        color: #6750A4;
-        margin-bottom: 2px;
+        color: #1D1B20;
+        line-height: 1.2;
     }
-    .sub-text {
+
+    .hero-sub {
         font-size: 13px;
         color: #49454F;
-        margin-bottom: 12px;
+        line-height: 1.4;
+        margin-top: 4px;
     }
-    
-    /* Animated Pulse Card */
+
+    /* Custom Text Input Styling */
+    div[data-testid="stTextInput"] > div > div {
+        background-color: #F3EDF7 !important;
+        border: 1px solid #79747E !important;
+        border-radius: 16px !important;
+        color: #1D1B20 !important;
+    }
+
+    /* File Uploaders - Rounded MD3 Card Look */
+    div[data-testid="stFileUploader"] {
+        background-color: #F3EDF7 !important;
+        border: 1px dashed #938F99 !important;
+        border-radius: 20px !important;
+        padding: 10px !important;
+    }
+
+    /* Primary MD3 Pill Button */
+    div.stButton > button {
+        background: #6750A4 !important;
+        color: #FFFFFF !important;
+        border: none !important;
+        border-radius: 100px !important;
+        padding: 12px 24px !important;
+        font-size: 15px !important;
+        font-weight: 600 !important;
+        letter-spacing: 0.2px !important;
+        box-shadow: 0 2px 6px rgba(103, 80, 164, 0.3) !important;
+        transition: all 0.2s ease-in-out !important;
+    }
+
+    div.stButton > button:hover, div.stButton > button:active {
+        background: #503E81 !important;
+        transform: translateY(-1px) !important;
+        box-shadow: 0 4px 10px rgba(103, 80, 164, 0.4) !important;
+    }
+
+    /* Scanner Progress Card */
     .scanner-box {
         background: linear-gradient(135deg, #21005D 0%, #6750A4 100%);
         color: #FFFFFF;
-        padding: 20px;
-        border-radius: 20px;
+        padding: 24px 20px;
+        border-radius: 28px;
         text-align: center;
-        margin-bottom: 16px;
-        box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+        margin-bottom: 20px;
+        box-shadow: 0 6px 16px rgba(33, 0, 93, 0.25);
     }
+
     .pulse-ring {
-        width: 40px;
-        height: 40px;
+        width: 44px;
+        height: 44px;
         margin: 0 auto 12px auto;
         border: 4px solid #EADDFF;
         border-radius: 50%;
         animation: pulse 1.2s infinite ease-in-out;
     }
+
     @keyframes pulse {
-        0% { transform: scale(0.8); opacity: 0.5; }
+        0% { transform: scale(0.85); opacity: 0.6; }
         50% { transform: scale(1.1); opacity: 1; }
-        100% { transform: scale(0.8); opacity: 0.5; }
+        100% { transform: scale(0.85); opacity: 0.6; }
     }
 </style>
 """, unsafe_allow_html=True)
@@ -304,7 +376,9 @@ def inspect_entire_bundle(file_bytes):
 if st.session_state.report_html:
     col_a, col_b = st.columns([3, 1])
     with col_a:
-        st.markdown('<div class="title-text">📊 Deep Teardown Report</div>', unsafe_allow_html=True)
+        st.markdown("""
+        <div style="font-size: 20px; font-weight: 700; color: #1D1B20; margin-bottom: 4px;">📊 Deep Teardown Report</div>
+        """, unsafe_allow_html=True)
     with col_b:
         if st.button("↩️ Re-scan", use_container_width=True):
             st.session_state.report_html = None
@@ -327,7 +401,6 @@ if st.session_state.report_html:
     
     st.markdown("---")
     
-    # Exporter Controls
     col_exp1, col_exp2 = st.columns(2)
     with col_exp1:
         st.download_button(
@@ -348,8 +421,22 @@ if st.session_state.report_html:
 
 # ==================== MAIN INPUT VIEW ====================
 else:
-    st.markdown('<div class="title-text">📱 Universal Deep APK Teardown</div>', unsafe_allow_html=True)
-    st.markdown('<div class="sub-text">Scans C++ JNI exports, GraphQL, ProtoBufs, DEX class diffs, databases, and split bundles.</div>', unsafe_allow_html=True)
+    # Modern Header Component
+    st.markdown("""
+    <div class="hero-card">
+        <div class="hero-title-row">
+            <div class="icon-badge">
+                <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#21005D" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+                    <rect x="5" y="2" width="14" height="20" rx="3" ry="3"></rect>
+                    <line x1="12" y1="18" x2="12.01" y2="18"></line>
+                    <path d="M9 6h6"></path>
+                </svg>
+            </div>
+            <div class="hero-title">APK Teardown Studio</div>
+        </div>
+        <div class="hero-sub">Deep binary scanner: Inspects C++ JNI exports, GraphQL, ProtoBufs, class diffs, databases, and split bundles.</div>
+    </div>
+    """, unsafe_allow_html=True)
 
     custom_keywords = st.text_input(
         "🎯 Custom Search / Keyword Hunt (Optional):", 
@@ -362,7 +449,7 @@ else:
     with col2:
         new_file = st.file_uploader("New Version (.apk, .aab, .xapk, .apks)", type=["apk", "aab", "xapk", "apks", "zip"])
 
-    if st.button("🚀 Run Maximum Deep Package Teardown", type="primary", use_container_width=True):
+    if st.button("🚀 Run Deep Package Teardown", type="primary", use_container_width=True):
         if "GROQ_API_KEY" not in st.secrets or not st.secrets["GROQ_API_KEY"]:
             st.error("GROQ_API_KEY is missing from Streamlit Secrets!")
         elif not old_file or not new_file:
@@ -370,12 +457,11 @@ else:
         else:
             scanner_placeholder = st.empty()
             
-            # Step 1: Scanner Animation
             scanner_placeholder.markdown("""
             <div class="scanner-box">
                 <div class="pulse-ring"></div>
-                <div style="font-weight: bold; font-size: 15px;">Parsing Archives & Native JNI Bridges...</div>
-                <div style="font-size: 12px; opacity: 0.8; margin-top: 4px;">Demangling C++ symbols, mapping GraphQL queries & ProtoBufs...</div>
+                <div style="font-weight: 700; font-size: 16px;">Parsing Archives & Native JNI Bridges...</div>
+                <div style="font-size: 12px; opacity: 0.85; margin-top: 6px;">Demangling C++ symbols, mapping GraphQL queries & ProtoBufs...</div>
             </div>
             """, unsafe_allow_html=True)
             
@@ -385,16 +471,14 @@ else:
             old_data = inspect_entire_bundle(old_bytes)
             new_data = inspect_entire_bundle(new_bytes)
             
-            # Step 2: Scanner Animation
             scanner_placeholder.markdown("""
             <div class="scanner-box">
                 <div class="pulse-ring"></div>
-                <div style="font-weight: bold; font-size: 15px;">Diffing Bytecode Classes & XOR Sweeps...</div>
-                <div style="font-size: 12px; opacity: 0.8; margin-top: 4px;">Correlating unreleased flags, annotations, and database tables...</div>
+                <div style="font-weight: 700; font-size: 16px;">Diffing Bytecode Classes & XOR Sweeps...</div>
+                <div style="font-size: 12px; opacity: 0.85; margin-top: 6px;">Correlating unreleased flags, annotations, and database tables...</div>
             </div>
             """, unsafe_allow_html=True)
             
-            # Diffs Computation
             added_files = list(new_data["files"] - old_data["files"])
             removed_files = list(old_data["files"] - new_data["files"])
             
@@ -470,12 +554,11 @@ else:
             REMOVED FILES ({len(removed_files)}): {removed_files[:20]}
             """
             
-            # Step 3: AI Query State Animation
             scanner_placeholder.markdown("""
             <div class="scanner-box">
                 <div class="pulse-ring"></div>
-                <div style="font-weight: bold; font-size: 15px;">Querying Groq AI Engine...</div>
-                <div style="font-size: 12px; opacity: 0.8; margin-top: 4px;">Generating Material Design 3 dashboard...</div>
+                <div style="font-weight: 700; font-size: 16px;">Querying Groq AI Engine...</div>
+                <div style="font-size: 12px; opacity: 0.85; margin-top: 6px;">Generating Material Design 3 dashboard...</div>
             </div>
             """, unsafe_allow_html=True)
             
