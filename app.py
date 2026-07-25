@@ -190,7 +190,7 @@ st.markdown("""
     .tile-val { font-size: 16px; font-weight: 800; color: #21005D; }
     .tile-lbl { font-size: 10px; color: #6F6A76; font-weight: 600; margin-top: 2px; }
 
-    .chip-row { display: flex; gap: 6px; flex-wrap: wrap; margin: 8px 0 14px 0; }
+    .chip-row { display: flex; gap: 6px; flex-wrap: wrap; margin: 8px 0 18px 0; }
     .chip {
         background: #F3EDF7; color: #21005D;
         font-size: 11px; font-weight: 600;
@@ -600,10 +600,8 @@ def render_quickfacts(old_data, new_data, added_image_keys, new_data_images):
     """
     st.markdown(tiles, unsafe_allow_html=True)
 
-    # COMBINED CHIPS ROW FOR ARCHITECTURES & SECRETS
     chips = '<div class="chip-row">'
     
-    # Part 1: Architecture/Locales/Splits
     if not new_archs and not new_locales and not new_splits:
         chips += '<span class="chip">No new architectures / locales / splits</span>'
     else:
@@ -611,7 +609,6 @@ def render_quickfacts(old_data, new_data, added_image_keys, new_data_images):
         for l in sorted(new_locales)[:8]: chips += f'<span class="chip">New locale: {sanitize(l)}</span>'
         for s in sorted(new_splits): chips += f'<span class="chip">Split: {sanitize(s)}</span>'
         
-    # Part 2: Secrets
     if secrets_new:
         chips += '<span class="chip chip-warn">Possible exposed secrets found</span>'
     else:
@@ -620,13 +617,11 @@ def render_quickfacts(old_data, new_data, added_image_keys, new_data_images):
     chips += '</div>'
     st.markdown(chips, unsafe_allow_html=True)
 
-    # SECRETS EXPANDER (if warning applies)
     if secrets_new:
         with st.expander(f"Potential exposed secrets ({len(secrets_new)})"):
             for s in sorted(secrets_new):
                 st.markdown(f'<div class="mono-block">{sanitize(s)}</div>', unsafe_allow_html=True)
 
-    # GRAPHIC PREVIEWS EXPANDER
     if added_image_keys:
         with st.expander("Newly Added Graphic Previews"):
             img_cols = st.columns(min(len(added_image_keys[:4]), 4))
@@ -964,7 +959,7 @@ else:
 
             try:
                 completion = client.chat.completions.create(
-                    model="llama-3.3-70b-versatile",
+                    model="llama-3.1-8b-instant",
                     messages=[{"role": "user", "content": prompt}],
                     temperature=0.1,
                     max_tokens=4000,
