@@ -18,12 +18,26 @@ from groq import Groq
 # ==================== PAGE SETUP ====================
 st.set_page_config(page_title="apk-diff", layout="centered")
 
-# ==================== UTILITY: SANITIZE TEXT ====================
+# ==================== UTILITY FUNCTIONS ====================
 def sanitize(text):
     """Prevents Streamlit from rendering $ as LaTeX math or hiding HTML tags."""
     if not text:
         return ""
     return html.escape(str(text)).replace("$", r"\$")
+
+def clean_json_response(raw_str):
+    """Clean markdown wrappers and escaped strings to prevent JSON parser crashes."""
+    cleaned = re.sub(r"^```json\s*", "", raw_str, flags=re.MULTILINE)
+    cleaned = re.sub(r"^```\s*", "", cleaned, flags=re.MULTILINE)
+    cleaned = cleaned.strip()
+    return cleaned
+
+def format_title_case(token):
+    """Format raw tokens (e.g., 'query stereo' -> 'Query Stereo')."""
+    if not token:
+        return ""
+    words = str(token).replace("_", " ").split()
+    return " ".join(w.capitalize() for w in words)
 
 # ==================== MATERIAL DESIGN 3 — NATIVE MOBILE STYLING ====================
 st.markdown("""
@@ -112,7 +126,19 @@ st.markdown("""
     }
     div[data-testid="stFileUploader"] small { display: none !important; }
 
-    /* ---- Native MD3 Action Button (Smaller Pill) ---- */
+    .file-badge {
+        background: #EADDFF;
+        color: #21005D;
+        padding: 6px 12px;
+        border-radius: 8px;
+        font-size: 11.5px;
+        font-weight: 700;
+        margin-top: 4px;
+        margin-bottom: 8px;
+        word-break: break-all;
+    }
+
+    /* ---- Action Buttons ---- */
     div.stButton > button {
         background: #6750A4 !important;
         color: #FFFFFF !important;
@@ -131,7 +157,6 @@ st.markdown("""
         transform: scale(0.98) !important;
     }
     
-    /* Secondary Button Style */
     .secondary-btn button {
         background: #31111D !important;
         color: #FFD8E4 !important;
@@ -186,7 +211,7 @@ st.markdown("""
     @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
     @keyframes pulse-core { 0% { transform: scale(0.8); opacity: 0.7; } 50% { transform: scale(1.15); opacity: 1; } 100% { transform: scale(0.8); opacity: 0.7; } }
 
-    /* ---- Native Fact Cards ---- */
+    /* ---- Fact Cards ---- */
     .tile-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-bottom: 12px; }
     .tile {
         background: #FFFFFF;
@@ -207,7 +232,7 @@ st.markdown("""
     .chip-warn { background: #FFEAEE; color: #410E0B; }
     .chip-ok { background: #E6F4EA; color: #0B3B12; }
 
-    /* ---- AI Card Styling (Standard) ---- */
+    /* ---- AI Card Styling ---- */
     .report-card {
         border-radius: 16px;
         padding: 16px;
@@ -240,7 +265,6 @@ st.markdown("""
         margin: 8px 0;
     }
 
-    /* ---- AI Card Styling (Hunter Mode) ---- */
     .hunter-card {
         background: #1D1B20;
         color: #E6E1E5;
@@ -276,7 +300,6 @@ st.markdown("""
         word-break: break-all;
     }
 
-    /* ---- Tabs styling ---- */
     .stTabs [data-baseweb="tab-list"] { gap: 4px; }
     .stTabs [data-baseweb="tab"] {
         font-size: 13px !important;
@@ -295,7 +318,7 @@ st.markdown("""
 </style>
 """, unsafe_allow_html=True)
 
-# HEADER CARD
+# ALWAYS RENDER HEADER
 st.markdown("""
 <div class="hero-card">
     <div class="hero-title-row">
@@ -576,8 +599,9 @@ def process_zip_archive(zip_obj, details):
 
         if name.endswith('/') or info.file_size == 0: continue
 
+        # Filter out Ad SDK and game cache images
         if any(lower_name.endswith(ext) for ext in ['.png', '.webp', '.jpg']) and info.file_size < 300 * 1024:
-            if not any(ignore in lower_name for ignore in ["icon", "launcher", "splash"]):
+            if not any(ignore in lower_name for ignore in ["icon", "launcher", "splash", "admob", "vungle", "unity", "chartboost"]):
                 try: details["images"][name.split('/')[-1]] = zip_obj.read(name)
                 except Exception: pass
 
@@ -675,7 +699,7 @@ def render_quickfacts(old_data, new_data, added_image_keys, new_data_images):
 
     tiles = f"""
     <div class="tile-grid">
-        <div class="tile"><div class="tile-val">{'+' if size_diff >= 0 else ''}{size_diff} MB</div><div class="tile-lbl">SIZE CHANGE</div></div>
+        <div class="tile"><div class="tile-val">{'+' if size_diff >= 0 else ''}{size_diff} MB</div><div class="tile-lbl">SIZE CHANGE ({old_size_mb}→{new_size_mb} MB)</div></div>
         <div class="tile"><div class="tile-val">{len(new_data['files']) - len(old_data['files']):+d}</div><div class="tile-lbl">FILE COUNT CHANGE</div></div>
         <div class="tile"><div class="tile-val">{len(new_sdks)}</div><div class="tile-lbl">NEW 3RD-PARTY SDKS</div></div>
         <div class="tile"><div class="tile-val">{len(new_data['jni_exports'] - old_data['jni_exports'])}</div><div class="tile-lbl">NEW JNI EXPORTS</div></div>
@@ -717,14 +741,17 @@ def render_quickfacts(old_data, new_data, added_image_keys, new_data_images):
                         pass
 
     with st.expander("Third-party SDK ecosystem"):
-        if new_sdks:
-            st.markdown("**Newly added:**")
-            st.markdown('<div class="chip-row">' + "".join(f'<span class="chip chip-ok">{sanitize(s)}</span>' for s in sorted(new_sdks)) + '</div>', unsafe_allow_html=True)
-        if removed_sdks:
-            st.markdown("**Removed:**")
-            st.markdown('<div class="chip-row">' + "".join(f'<span class="chip chip-warn">{sanitize(s)}</span>' for s in sorted(removed_sdks)) + '</div>', unsafe_allow_html=True)
-        st.markdown("**All SDKs detected in new build:**")
-        st.markdown('<div class="chip-row">' + "".join(f'<span class="chip">{sanitize(s)}</span>' for s in sorted(new_data["third_party_sdks"])) + '</div>', unsafe_allow_html=True)
+        if new_sdks or removed_sdks or new_data["third_party_sdks"]:
+            if new_sdks:
+                st.markdown("**Newly added:**")
+                st.markdown('<div class="chip-row">' + "".join(f'<span class="chip chip-ok">{sanitize(s)}</span>' for s in sorted(new_sdks)) + '</div>', unsafe_allow_html=True)
+            if removed_sdks:
+                st.markdown("**Removed:**")
+                st.markdown('<div class="chip-row">' + "".join(f'<span class="chip chip-warn">{sanitize(s)}</span>' for s in sorted(removed_sdks)) + '</div>', unsafe_allow_html=True)
+            st.markdown("**All SDKs detected in new build:**")
+            st.markdown('<div class="chip-row">' + "".join(f'<span class="chip">{sanitize(s)}</span>' for s in sorted(new_data["third_party_sdks"])) + '</div>', unsafe_allow_html=True)
+        else:
+            st.markdown('<span class="chip chip-ok">No third-party SDKs detected</span>', unsafe_allow_html=True)
 
     with st.expander("Size breakdown by category (new build)"):
         cats = sorted(new_data["category_sizes"].items(), key=lambda x: -x[1])
@@ -826,7 +853,7 @@ def render_quickfacts(old_data, new_data, added_image_keys, new_data_images):
 def format_html_list(items):
     if not items:
         return "<li>No changes detected.</li>"
-    return "".join(f"<li><code>{sanitize(item)}</code></li>" if "_" in item or "." in item or "/" in item else f"<li>{sanitize(item)}</li>" for item in items[:12])
+    return "".join(f"<li><code>{sanitize(format_title_case(item))}</code></li>" if "_" in item or "." in item or "/" in item else f"<li>{sanitize(format_title_case(item))}</li>" for item in items[:12])
 
 def render_standard_dashboard(report_data):
     size_mb = report_data.get("size_diff_mb", 0.0)
@@ -859,7 +886,20 @@ def render_standard_dashboard(report_data):
     </div>
     """, unsafe_allow_html=True)
 
-    blueprints_text = sanitize(report_data.get("blueprints", "No new unreleased feature patterns detected."))
+    blueprints_raw = report_data.get("blueprints", "")
+    if isinstance(blueprints_raw, list):
+        formatted_bp = ""
+        for item in blueprints_raw:
+            if isinstance(item, dict):
+                feat_name = sanitize(item.get('feature', 'Feature'))
+                pred = sanitize(item.get('prediction', ''))
+                formatted_bp += f"<b>{feat_name}:</b> {pred}<br>"
+            else:
+                formatted_bp += f"{sanitize(str(item))}<br>"
+        blueprints_text = formatted_bp
+    else:
+        blueprints_text = sanitize(str(blueprints_raw))
+
     cmd_code = sanitize(report_data.get("command", "adb shell dumpsys package | grep -i feature"))
     st.markdown(f"""
     <div class="report-card" style="background-color: #FFD8E4; border-left: 4px solid #B12B58; color: #31111D;">
@@ -901,7 +941,7 @@ def render_standard_dashboard(report_data):
     </div>
     """, unsafe_allow_html=True)
 
-    sec_text = sanitize(report_data.get("security", "No elevated risk found."))
+    sec_text = sanitize(report_data.get("security", "No security risks detected."))
     st.markdown(f"""
     <div class="report-card" style="background-color: #FFF3E0; border-left: 4px solid #E8A33D; color: #3E2723;">
         <div class="report-card-title">
@@ -990,9 +1030,16 @@ if st.session_state.report_data or st.session_state.hunter_data:
 
 # ==================== MAIN INPUT VIEW ====================
 else:
-    # UPDATED UPLOADER WITH .APKM
-    old_file = st.file_uploader("Old Version (.apk, .aab, .xapk, .apks, .apkm)", type=["apk", "aab", "xapk", "apks", "apkm", "zip"])
-    new_file = st.file_uploader("New Version (.apk, .aab, .xapk, .apks, .apkm)", type=["apk", "aab", "xapk", "apks", "apkm", "zip"])
+    # SINGLE FILE SELECTION (accept_multiple_files=False)
+    old_file = st.file_uploader("Old Version (.apk, .aab, .xapk, .apks, .apkm)", type=["apk", "aab", "xapk", "apks", "apkm", "zip"], accept_multiple_files=False)
+    if old_file:
+        mb_old = round(old_file.size / (1024 * 1024), 2)
+        st.markdown(f'<div class="file-badge">Selected Old: <b>{sanitize(old_file.name)}</b> ({mb_old} MB)</div>', unsafe_allow_html=True)
+
+    new_file = st.file_uploader("New Version (.apk, .aab, .xapk, .apks, .apkm)", type=["apk", "aab", "xapk", "apks", "apkm", "zip"], accept_multiple_files=False)
+    if new_file:
+        mb_new = round(new_file.size / (1024 * 1024), 2)
+        st.markdown(f'<div class="file-badge">Selected New: <b>{sanitize(new_file.name)}</b> ({mb_new} MB)</div>', unsafe_allow_html=True)
 
     run_standard = st.button("Standard Deep Scan", use_container_width=True)
     st.markdown('<div class="secondary-btn">', unsafe_allow_html=True)
@@ -1106,8 +1153,9 @@ else:
                 """
 
                 prompt = f"""
-                You are an investigative journalist finding hidden features in an APK diff.
+                You are an investigative mobile app software journalist finding hidden features in an APK diff.
                 Correlate the provided layouts, UI text, and feature flags to deduce unreleased features.
+                Do NOT include unescaped raw quotes inside JSON values.
                 Respond ONLY in valid JSON format with no markdown wrappers or backticks.
 
                 JSON Schema required:
@@ -1133,10 +1181,9 @@ else:
                         max_tokens=1000,
                     )
                     raw_res = completion.choices[0].message.content.strip()
-                    raw_res = re.sub(r"^```json\s*", "", raw_res, flags=re.MULTILINE)
-                    raw_res = re.sub(r"^```\s*", "", raw_res, flags=re.MULTILINE)
+                    cleaned = clean_json_response(raw_res)
                     
-                    st.session_state.hunter_data = json.loads(raw_res)
+                    st.session_state.hunter_data = json.loads(cleaned)
                     scanner_placeholder.empty()
                     st.rerun()
                 except Exception as e:
@@ -1175,6 +1222,8 @@ else:
                 prompt = f"""
                 You are a lead mobile software investigator analyzing an APK diff.
                 Analyze this diff data and respond ONLY in valid JSON format with no markdown wrappers or backticks.
+                Do NOT label standard WebRTC audio/video features or bitrate config keys as security risks. Say 'No security risks detected.' unless actual exposed secrets, unencrypted endpoints, or risky permissions exist.
+                Do NOT include unescaped raw quotes inside JSON values.
 
                 JSON Schema required:
                 {{
@@ -1196,10 +1245,9 @@ else:
                         max_tokens=1500,
                     )
                     raw_res = completion.choices[0].message.content.strip()
-                    raw_res = re.sub(r"^```json\s*", "", raw_res, flags=re.MULTILINE)
-                    raw_res = re.sub(r"^```\s*", "", raw_res, flags=re.MULTILINE)
+                    cleaned = clean_json_response(raw_res)
 
-                    parsed_ai = json.loads(raw_res)
+                    parsed_ai = json.loads(cleaned)
 
                     parsed_ai["size_diff_mb"] = size_diff_mb
                     parsed_ai["num_flags"] = len(feature_toggles)
