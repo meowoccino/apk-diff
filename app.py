@@ -1364,7 +1364,7 @@ else:
                         model="llama-3.1-8b-instant",
                         messages=[{"role": "user", "content": prompt}],
                         temperature=0.0,
-                        max_tokens=3500,
+                        max_tokens=1500,
                     )
                     raw_res = completion.choices[0].message.content.strip()
                     cleaned = clean_json_response(raw_res)
@@ -1430,7 +1430,7 @@ else:
                         model="llama-3.3-70b-versatile", 
                         messages=[{"role": "user", "content": prompt}],
                         temperature=0.0,
-                        max_tokens=3500,
+                        max_tokens=1500,
                     )
                     raw_res = completion.choices[0].message.content.strip()
                     cleaned = clean_json_response(raw_res)
