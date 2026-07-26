@@ -11,6 +11,7 @@ import urllib.request
 import shutil
 import html
 import json
+import shlex
 from collections import defaultdict
 from PIL import Image
 from groq import Groq
@@ -61,6 +62,35 @@ def fix_adb_command_syntax(cmd, target_pkg):
                 clean = f"{prefix} -n {target_pkg}/{intent_target}"
                 
     return clean
+
+def safe_execute_adb(cmd_str):
+    """Safely executes ADB commands without shell=True to prevent command injection."""
+    cmd = cmd_str.strip()
+    if cmd.startswith("$"):
+        cmd = cmd[1:].strip()
+    if cmd.startswith("adb "):
+        cmd = cmd[4:].strip()
+        
+    try:
+        tokens = shlex.split(cmd)
+    except Exception as e:
+        return False, f"Invalid command syntax: {e}"
+        
+    if not tokens or tokens[0] not in ["am", "pm", "dumpsys"]:
+        return False, "Security restriction: Only 'am', 'pm', and 'dumpsys' commands are allowed."
+        
+    full_args = ["adb", "shell"] + tokens
+    
+    try:
+        res = subprocess.run(full_args, capture_output=True, text=True, timeout=12)
+        if res.returncode == 0:
+            return True, res.stdout.strip() or "Command executed successfully."
+        else:
+            return False, res.stderr.strip() or f"Returned non-zero status code: {res.returncode}"
+    except subprocess.TimeoutExpired:
+        return False, "Command execution timed out."
+    except Exception as e:
+        return False, f"Execution failed: {e}"
 
 def is_local_adb_available():
     """Detects if running locally in Termux with an active ADB connection."""
@@ -397,6 +427,9 @@ st.markdown("""
 
 # ==================== JADX DECOMPILER SETUP ====================
 def setup_jadx():
+    if not shutil.which("java"):
+        raise RuntimeError("Java (OpenJDK) is not installed in system path. Please install OpenJDK to use decompilation.")
+
     if not os.path.exists("jadx"):
         with st.spinner("Preparing extraction engine..."):
             jadx_zip_path = os.path.join(tempfile.gettempdir(), "jadx.zip")
@@ -416,7 +449,10 @@ def decompile_apk(file_bytes, filename):
         os.makedirs(out_dir, exist_ok=True)
         
         with st.spinner(f"Extracting source from {filename}..."):
-            subprocess.run(["jadx/bin/jadx", "-d", out_dir, "-r", "--show-bad-code", apk_path], check=False)
+            res = subprocess.run(["jadx/bin/jadx", "-d", out_dir, "-r", "--show-bad-code", apk_path], capture_output=True, text=True, timeout=300)
+            if res.returncode != 0 and not os.listdir(out_dir):
+                st.error(f"JADX failed to decompile APK: {res.stderr[:200]}")
+                return None
             
         zip_base_path = os.path.join(tempfile.gettempdir(), f"{filename}_source")
         archive_path = shutil.make_archive(zip_base_path, 'zip', out_dir)
@@ -499,10 +535,18 @@ UI_TEXT_SKIP_SUBSTR = (
     "androidx", "kotlin.", "java.", "com.google", "com.android",
 )
 
-def looks_like_ui_text(s):
+def clean_ui_string(s):
+    """Strips leading Markdown/Resource junk like ## or #$ or @ symbols."""
+    if not s:
+        return ""
+    cleaned = re.sub(r'^[#$@%!&\*\-]+', '', s).strip()
+    return cleaned
+
+def looks_like_ui_text(raw_s):
+    s = clean_ui_string(raw_s)
     if not (2 <= len(s) <= 140): return False
     if "/" in s or "\\" in s: return False
-    if any(sub in s for sub in UI_TEXT_SKIP_SUBSTR): return False
+    if any(sub in s.lower() for sub in UI_TEXT_SKIP_SUBSTR): return False
     has_space = " " in s
     has_lower = any(c.islower() for c in s)
     has_letter = any(c.isalpha() for c in s)
@@ -707,7 +751,7 @@ def process_zip_archive(zip_obj, details):
                 details["all_strings"].update(file_tokens)
 
             if lower_name.endswith("resources.arsc") or lower_name.endswith(".arsc"):
-                details["ui_strings"].update(t for t in file_tokens if looks_like_ui_text(t))
+                details["ui_strings"].update(clean_ui_string(t) for t in file_tokens if looks_like_ui_text(t))
 
             for token in file_tokens:
                 clean_token = re.sub(r'^[a-zA-Z0-9]+http', 'http', token)
@@ -1055,7 +1099,6 @@ def render_hunter_dashboard(hunter_data):
         st.markdown('<div class="hunter-card">No clear feature correlations found in this scan.</div>', unsafe_allow_html=True)
         return
 
-    # Check if local ADB is connected on device
     has_adb = is_local_adb_available()
 
     for idx, feat in enumerate(features):
@@ -1081,24 +1124,19 @@ def render_hunter_dashboard(hunter_data):
         """, unsafe_allow_html=True)
 
         if has_adb:
-            # Running locally in Termux: show command + Run button
             col1, col2 = st.columns([3, 1])
             with col1:
                 st.markdown(f'<div class="hunter-cmd">{sanitize(display_cmd)}</div>', unsafe_allow_html=True)
             with col2:
                 st.markdown('<div class="run-btn">', unsafe_allow_html=True)
                 if st.button("▶ Run", key=f"run_btn_{idx}", use_container_width=True):
-                    if clean_cmd and "adb " in clean_cmd:
-                        try:
-                            subprocess.run(clean_cmd, shell=True, check=True)
-                            st.toast(f"Fired to device: {clean_cmd[:35]}...")
-                        except Exception as e:
-                            st.error(f"Failed to run command: {e}")
+                    success, output = safe_execute_adb(clean_cmd)
+                    if success:
+                        st.toast(f"Command fired: {display_cmd[:35]}...")
                     else:
-                        st.error("Invalid ADB command syntax.")
+                        st.error(f"Execution Error: {output}")
                 st.markdown('</div>', unsafe_allow_html=True)
         else:
-            # Hosted on Web: present clean code box with tap-to-copy built right in!
             st.code(display_cmd, language="bash")
         
         st.markdown('</div>', unsafe_allow_html=True)
@@ -1326,7 +1364,7 @@ else:
                         model="llama-3.1-8b-instant",
                         messages=[{"role": "user", "content": prompt}],
                         temperature=0.0,
-                        max_tokens=2500,
+                        max_tokens=3500,
                     )
                     raw_res = completion.choices[0].message.content.strip()
                     cleaned = clean_json_response(raw_res)
@@ -1392,7 +1430,7 @@ else:
                         model="llama-3.3-70b-versatile", 
                         messages=[{"role": "user", "content": prompt}],
                         temperature=0.0,
-                        max_tokens=1500,
+                        max_tokens=3500,
                     )
                     raw_res = completion.choices[0].message.content.strip()
                     cleaned = clean_json_response(raw_res)
