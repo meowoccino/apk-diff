@@ -1340,6 +1340,7 @@ else:
                 2. Focus STRICTLY on finding new Exported Activities and Deep Links/Schemes that correlate with the new layouts and UI text.
                 3. PRIORITIZE recent experiment names and current-year date flags.
                 4. For Activity commands, specify the full activity path name using the target package string '{st.session_state.target_pkg}'.
+                5. Ensure all strings use double quotes and escape internal quotes properly.
                 Extract up to 8 distinct unreleased features.
                 Respond ONLY in valid JSON format with no markdown wrappers or backticks.
 
@@ -1365,6 +1366,7 @@ else:
                         messages=[{"role": "user", "content": prompt}],
                         temperature=0.0,
                         max_tokens=1500,
+                        response_format={"type": "json_object"},
                     )
                     raw_res = completion.choices[0].message.content.strip()
                     cleaned = clean_json_response(raw_res)
@@ -1411,7 +1413,7 @@ else:
                 CRITICAL: Ignore standard Android framework code. Focus STRICTLY on novel feature flags, unreleased layouts, and new workflow strings. 
                 Analyze this diff data and respond ONLY in valid JSON format with no markdown wrappers or backticks.
                 Do NOT invent security vulnerabilities. Instead, provide a factual summary of the app's ecosystem, such as new third-party trackers, network endpoints, or permission changes.
-                Do NOT include unescaped raw quotes inside JSON values.
+                Do NOT include unescaped raw quotes inside JSON values. Ensure all properties use double quotes.
 
                 JSON Schema required:
                 {{
@@ -1431,6 +1433,7 @@ else:
                         messages=[{"role": "user", "content": prompt}],
                         temperature=0.0,
                         max_tokens=1500,
+                        response_format={"type": "json_object"},
                     )
                     raw_res = completion.choices[0].message.content.strip()
                     cleaned = clean_json_response(raw_res)
