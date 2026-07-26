@@ -39,6 +39,40 @@ def format_title_case(token):
     words = str(token).replace("_", " ").split()
     return " ".join(w.capitalize() for w in words)
 
+def fix_adb_command_syntax(cmd, target_pkg):
+    """Automatically repairs missing slashes, stray $ signs, and AI package placeholders."""
+    if not target_pkg or target_pkg == "com.unknown.app":
+        target_pkg = "com.android.vending"
+        
+    clean = cmd.replace("$", "").strip()
+    
+    for placeholder in ["PACKAGE_NAME", "com.example.app", "com.unknown.app"]:
+        clean = clean.replace(placeholder, target_pkg)
+        
+    if " -n " in clean:
+        prefix, intent_target = clean.split(" -n ", 1)
+        intent_target = intent_target.strip()
+        
+        if "/" not in intent_target:
+            if intent_target.startswith(target_pkg):
+                act = intent_target[len(target_pkg):].strip(".")
+                clean = f"{prefix} -n {target_pkg}/.{act}"
+            else:
+                clean = f"{prefix} -n {target_pkg}/{intent_target}"
+                
+    return clean
+
+def is_local_adb_available():
+    """Detects if running locally in Termux with an active ADB connection."""
+    if not shutil.which("adb"):
+        return False
+    try:
+        res = subprocess.run(["adb", "devices"], capture_output=True, text=True, timeout=2)
+        lines = [l for l in res.stdout.strip().split("\n") if l.endswith("\tdevice")]
+        return len(lines) > 0
+    except Exception:
+        return False
+
 # ==================== MATERIAL DESIGN 3 — NATIVE MOBILE STYLING ====================
 st.markdown("""
 <style>
@@ -116,13 +150,14 @@ st.markdown("""
         margin: 12px 4px 8px 4px;
     }
 
-    /* ---- Native File Upload Cards ---- */
-    div[data-testid="stFileUploader"] {
+    /* ---- Native File Upload Cards & Input ---- */
+    div[data-testid="stFileUploader"], div[data-testid="stTextInput"] {
         background-color: #FFFFFF !important;
         border: 1px solid #E7E0EC !important;
         border-radius: 16px !important;
         padding: 12px !important;
         box-shadow: 0 1px 4px rgba(0,0,0,0.02) !important;
+        margin-bottom: 10px;
     }
     div[data-testid="stFileUploader"] small { display: none !important; }
 
@@ -150,6 +185,16 @@ st.markdown("""
         color: #FFD8E4 !important;
         box-shadow: 0 2px 6px rgba(49, 17, 29, 0.2) !important;
     }
+    
+    .run-btn button {
+        background: #0B3B12 !important;
+        color: #E6F4EA !important;
+        box-shadow: 0 2px 6px rgba(11, 59, 18, 0.3) !important;
+        border-radius: 8px !important;
+        padding: 4px 8px !important;
+        min-height: 38px !important;
+        margin-top: 0 !important;
+    }
 
     /* ---- Native Expanders ---- */
     [data-testid="stExpander"] {
@@ -164,38 +209,54 @@ st.markdown("""
     [data-testid="stExpander"] summary p { font-weight: 600 !important; color: #1D1B20 !important; font-size: 14px !important; }
     [data-testid="stExpander"] summary:hover { background-color: #F8F9FA !important; }
 
-    /* ---- Radar Scanner Animation ---- */
-    .scanner-box {
-        background: #FFFFFF;
-        color: #21005D;
-        padding: 24px 16px;
-        border-radius: 24px;
+    /* ---- Centered Blurred Overlay Modal ---- */
+    .overlay-backdrop {
+        position: fixed;
+        top: 0; left: 0;
+        width: 100vw; height: 100vh;
+        background: rgba(0, 0, 0, 0.6);
+        backdrop-filter: blur(6px);
+        -webkit-backdrop-filter: blur(6px);
+        z-index: 9998;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+    }
+    .scanner-box-modal {
+        background: #1D1B20;
+        color: #E6E1E5;
+        padding: 32px 24px;
+        border-radius: 28px;
         text-align: center;
-        margin-top: 10px;
-        margin-bottom: 16px;
-        border: 1px solid #E7E0EC;
-        box-shadow: 0 4px 16px rgba(103,80,164,0.08);
+        width: 85%;
+        max-width: 360px;
+        z-index: 9999;
+        box-shadow: 0 16px 40px rgba(0,0,0,0.4);
+        border: 1px solid #332D41;
     }
     .pulse-container {
         position: relative;
-        width: 48px; height: 48px;
-        margin: 0 auto 12px auto;
+        width: 56px; height: 56px;
+        margin: 0 auto 16px auto;
         display: flex; align-items: center; justify-content: center;
     }
     .radar-ring {
         position: absolute;
         width: 100%; height: 100%;
-        border: 3px solid #6750A4;
+        border: 4px solid #D0BCFF;
         border-top-color: transparent;
         border-radius: 50%;
         animation: spin 0.9s infinite linear;
     }
     .radar-core {
-        width: 18px; height: 18px;
-        background: #6750A4;
+        width: 22px; height: 22px;
+        background: #D0BCFF;
         border-radius: 50%;
         animation: pulse-core 1.2s infinite ease-in-out;
     }
+    .scan-title { font-weight: 800; font-size: 18px; color: #D0BCFF; margin-top: 8px; letter-spacing: -0.01em; }
+    .scan-sub { font-size: 13px; color: #CAC4D0; margin-top: 8px; line-height: 1.4; }
+    
     @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
     @keyframes pulse-core { 0% { transform: scale(0.8); opacity: 0.7; } 50% { transform: scale(1.15); opacity: 1; } 100% { transform: scale(0.8); opacity: 0.7; } }
 
@@ -286,6 +347,9 @@ st.markdown("""
         font-family: 'SFMono-Regular', Consolas, monospace;
         font-size: 11px;
         word-break: break-all;
+        height: 100%;
+        display: flex;
+        align-items: center;
     }
 
     .stTabs [data-baseweb="tab-list"] { gap: 4px; }
@@ -372,7 +436,8 @@ for key, default in [
     ("new_data_images", {}),
     ("quickfacts", None),
     ("jadx_ready", False),
-    ("jadx_zip_bytes", None)
+    ("jadx_zip_bytes", None),
+    ("target_pkg", "com.android.vending")
 ]:
     if key not in st.session_state:
         st.session_state[key] = default
@@ -380,7 +445,7 @@ for key, default in [
 NOISE_PATTERNS = [
     "androidx/", "com/google/android/", "kotlin/", "java/", "javax/",
     "android/support/", "org/apache/", "com/facebook/", "io/reactivex/",
-    "Ljava/", "Lkotlin/", "Landroid/", "Landroidx/"
+    "Ljava/", "Lkotlin/", "Landroid/", "Landroidx/", "webrtc", "googleusercontent"
 ]
 
 SDK_SIGNATURES = {
@@ -413,7 +478,6 @@ SDK_SIGNATURES = {
     "Retrofit": ["retrofit2"],
     "OkHttp": ["okhttp3"],
     "Room": ["androidx/room"],
-    "WebRTC": ["org/webrtc"],
 }
 
 SECRET_PATTERNS = {
@@ -587,7 +651,6 @@ def process_zip_archive(zip_obj, details):
 
         if name.endswith('/') or info.file_size == 0: continue
 
-        # Filter out Ad SDK and game cache images
         if any(lower_name.endswith(ext) for ext in ['.png', '.webp', '.jpg']) and info.file_size < 300 * 1024:
             if not any(ignore in lower_name for ignore in ["icon", "launcher", "splash", "admob", "vungle", "unity", "chartboost"]):
                 try: details["images"][name.split('/')[-1]] = zip_obj.read(name)
@@ -598,6 +661,13 @@ def process_zip_archive(zip_obj, details):
 
         try:
             raw_bytes = zip_obj.read(name) if info.file_size < 10 * 1024 * 1024 else zip_obj.open(name).read(5 * 1024 * 1024)
+
+            if lower_name == "androidmanifest.xml":
+                manifest_tokens = extract_strings_from_bytes(raw_bytes)
+                for tok in manifest_tokens:
+                    if re.match(r'^[a-z][a-z0-9_]*(\.[a-z0-9_]+)+$', tok) and not any(tok.startswith(p) for p in ["android.", "androidx.", "schemas.", "http"]):
+                        if tok.count('.') >= 2:
+                            details["manifest_packages"].add(tok)
 
             if any(lower_name.endswith(ext) for ext in [".db", ".sqlite"]):
                 details["db_schemas"].update(inspect_sqlite_db(raw_bytes))
@@ -613,9 +683,11 @@ def process_zip_archive(zip_obj, details):
 
             if lower_name.endswith(".dex"):
                 class_matches = re.findall(rb'L[a-zA-Z0-9_$]+/[a-zA-Z0-9_$]+;', raw_bytes)
-                for cm in class_matches[:150]:
+                for cm in class_matches[:250]:
                     decoded_cls = cm.decode('ascii', errors='ignore')
-                    if not is_framework_noise(decoded_cls): details["class_paths"].add(decoded_cls)
+                    if not is_framework_noise(decoded_cls): 
+                        formatted_cls = decoded_cls.lstrip('L').rstrip(';').replace('/', '.')
+                        details["class_paths"].add(formatted_cls)
 
                 anno_matches = re.findall(rb'(?:SerializedName|Keep|Beta|Experimental|RequiresOptIn)[A-Za-z0-9_"\':\s]{2,60}', raw_bytes)
                 for am in anno_matches:
@@ -638,12 +710,19 @@ def process_zip_archive(zip_obj, details):
                 details["ui_strings"].update(t for t in file_tokens if looks_like_ui_text(t))
 
             for token in file_tokens:
-                token_lower = token.lower()
-                if "permission." in token_lower: details["permissions"].add(token)
-                elif "activity" in token_lower or "screen" in token_lower: details["activities"].add(token)
-                elif "service" in token_lower or "receiver" in token_lower: details["services"].add(token)
-                elif token_lower.startswith("http://") or token_lower.startswith("https://"): details["endpoints"].add(token)
-                elif "scheme://" in token_lower or "://" in token_lower: details["deep_links"].add(token)
+                clean_token = re.sub(r'^[a-zA-Z0-9]+http', 'http', token)
+                clean_lower = clean_token.lower()
+                
+                if "permission." in clean_lower: details["permissions"].add(clean_token)
+                elif ("activity" in clean_lower or "screen" in clean_lower) and "." in clean_token: 
+                    details["activities"].add(clean_token)
+                elif "service" in clean_lower or "receiver" in clean_lower: details["services"].add(clean_token)
+                elif clean_lower.startswith("http://") or clean_lower.startswith("https://"): 
+                    if not any(n in clean_lower for n in ["googleusercontent", "comodoca", ".png", ".jpg", ".webp"]):
+                        details["endpoints"].add(clean_token)
+                elif "scheme://" in clean_lower or "://" in clean_lower: 
+                    if not any(n in clean_lower for n in ["googleusercontent", "comodoca", ".png", ".jpg", ".webp"]):
+                        details["deep_links"].add(clean_token)
         except Exception: pass
 
 def inspect_entire_bundle(file_bytes):
@@ -652,7 +731,7 @@ def inspect_entire_bundle(file_bytes):
         "annotations": set(), "protobuf_schemas": set(), "graphql_ops": set(), "jni_exports": set(), "class_paths": set(),
         "db_schemas": set(), "xor_urls": set(), "activities": set(), "services": set(), "permissions": set(),
         "deep_links": set(), "endpoints": set(), "images": {}, "category_sizes": {}, "ui_strings": set(),
-        "layouts": set()
+        "layouts": set(), "manifest_packages": set()
     }
     try:
         with zipfile.ZipFile(io.BytesIO(file_bytes), "r") as z:
@@ -665,6 +744,14 @@ def inspect_entire_bundle(file_bytes):
     details["signing_info"] = detect_signing_info(details["files"])
     details["splits"] = detect_split_bundles(details["files"])
     details["third_party_sdks"] = detect_third_party_sdks(details["class_paths"], details["config_strings"])
+    
+    pkg_candidates = list(details["manifest_packages"])
+    if pkg_candidates:
+        pkg_candidates.sort(key=lambda x: len(x.split('.')))
+        details["package_name"] = pkg_candidates[0]
+    else:
+        details["package_name"] = "com.android.vending"
+
     return details
 
 def render_quickfacts(old_data, new_data, added_image_keys, new_data_images):
@@ -929,17 +1016,19 @@ def render_standard_dashboard(report_data):
     </div>
     """, unsafe_allow_html=True)
 
-    sec_text = sanitize(report_data.get("security", "No security risks detected."))
+    eco_text = sanitize(report_data.get("ecosystem", "No major ecosystem or tracker changes detected."))
     st.markdown(f"""
-    <div class="report-card" style="background-color: #FFF3E0; border-left: 4px solid #E8A33D; color: #3E2723;">
+    <div class="report-card" style="background-color: #E3F2FD; border-left: 4px solid #0277BD; color: #004D40;">
         <div class="report-card-title">
-            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#3E2723" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
-                <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"></path>
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#0277BD" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"></path>
+                <polyline points="3.27 6.96 12 12.01 20.73 6.96"></polyline>
+                <line x1="12" y1="22.08" x2="12" y2="12"></line>
             </svg>
-            <span>Security, SDKs & Packaging Risk</span>
+            <span>Ecosystem & Data Footprint</span>
         </div>
         <div class="report-card-body">
-            <p>{sec_text}</p>
+            <p>{eco_text}</p>
         </div>
     </div>
     """, unsafe_allow_html=True)
@@ -966,10 +1055,16 @@ def render_hunter_dashboard(hunter_data):
         st.markdown('<div class="hunter-card">No clear feature correlations found in this scan.</div>', unsafe_allow_html=True)
         return
 
-    for feat in features:
+    # Check if local ADB is connected on device
+    has_adb = is_local_adb_available()
+
+    for idx, feat in enumerate(features):
         name = sanitize(feat.get("name", "Unknown Feature"))
         evidence = sanitize(feat.get("evidence", "No evidence provided."))
-        cmd = sanitize(feat.get("activation", "N/A"))
+        raw_cmd = feat.get("activation", "")
+        
+        clean_cmd = fix_adb_command_syntax(raw_cmd, st.session_state.target_pkg)
+        display_cmd = f"adb {clean_cmd.replace('adb ', '')}"
         
         st.markdown(f"""
         <div class="hunter-card">
@@ -983,11 +1078,30 @@ def render_hunter_dashboard(hunter_data):
             <div class="hunter-evidence">
                 <b>Evidence found:</b><br>{evidence}
             </div>
-            <div class="hunter-cmd">
-                $ {cmd}
-            </div>
-        </div>
         """, unsafe_allow_html=True)
+
+        if has_adb:
+            # Running locally in Termux: show command + Run button
+            col1, col2 = st.columns([3, 1])
+            with col1:
+                st.markdown(f'<div class="hunter-cmd">{sanitize(display_cmd)}</div>', unsafe_allow_html=True)
+            with col2:
+                st.markdown('<div class="run-btn">', unsafe_allow_html=True)
+                if st.button("▶ Run", key=f"run_btn_{idx}", use_container_width=True):
+                    if clean_cmd and "adb " in clean_cmd:
+                        try:
+                            subprocess.run(clean_cmd, shell=True, check=True)
+                            st.toast(f"Fired to device: {clean_cmd[:35]}...")
+                        except Exception as e:
+                            st.error(f"Failed to run command: {e}")
+                    else:
+                        st.error("Invalid ADB command syntax.")
+                st.markdown('</div>', unsafe_allow_html=True)
+        else:
+            # Hosted on Web: present clean code box with tap-to-copy built right in!
+            st.code(display_cmd, language="bash")
+        
+        st.markdown('</div>', unsafe_allow_html=True)
 
 # ==================== FULLSCREEN REPORT VIEW ====================
 if st.session_state.report_data or st.session_state.hunter_data:
@@ -1029,13 +1143,15 @@ if st.session_state.report_data or st.session_state.hunter_data:
         st.session_state.quickfacts = None
         st.session_state.jadx_ready = False
         st.session_state.jadx_zip_bytes = None
+        st.session_state.target_pkg = "com.android.vending"
         st.rerun()
 
 # ==================== MAIN INPUT VIEW ====================
 else:
-    # SINGLE FILE SELECTION (accept_multiple_files=False)
     old_file = st.file_uploader("Old Version (.apk, .aab, .xapk, .apks, .apkm)", type=["apk", "aab", "xapk", "apks", "apkm", "zip"], accept_multiple_files=False)
     new_file = st.file_uploader("New Version (.apk, .aab, .xapk, .apks, .apkm)", type=["apk", "aab", "xapk", "apks", "apkm", "zip"], accept_multiple_files=False)
+
+    user_pkg_input = st.text_input("Target Package Name (Auto-detected if left blank)", value=st.session_state.target_pkg, placeholder="e.g. com.android.vending or com.discord")
 
     run_standard = st.button("Standard Deep Scan", use_container_width=True)
     st.markdown('<div class="secondary-btn">', unsafe_allow_html=True)
@@ -1059,13 +1175,15 @@ else:
             scanner_placeholder = st.empty()
 
             scanner_placeholder.markdown("""
-            <div class="scanner-box">
-                <div class="pulse-container">
-                    <div class="radar-ring"></div>
-                    <div class="radar-core"></div>
+            <div class="overlay-backdrop">
+                <div class="scanner-box-modal">
+                    <div class="pulse-container">
+                        <div class="radar-ring"></div>
+                        <div class="radar-core"></div>
+                    </div>
+                    <div class="scan-title">Decompressing Archives</div>
+                    <div class="scan-sub">Mapping GraphQL & ProtoBufs...</div>
                 </div>
-                <div style="font-weight: 800; font-size: 16px; color: #21005D;">Decompressing Archives & Native JNI Bridges</div>
-                <div style="font-size: 13px; color: #49454F; margin-top: 4px;">Demangling C++ symbols, mapping GraphQL & ProtoBufs...</div>
             </div>
             """, unsafe_allow_html=True)
 
@@ -1076,14 +1194,23 @@ else:
             new_data = inspect_entire_bundle(new_bytes)
             st.session_state.quickfacts = (old_data, new_data)
 
+            if user_pkg_input.strip():
+                final_pkg_name = user_pkg_input.strip()
+            else:
+                final_pkg_name = new_data.get("package_name", "com.android.vending")
+            
+            st.session_state.target_pkg = final_pkg_name
+
             scanner_placeholder.markdown("""
-            <div class="scanner-box">
-                <div class="pulse-container">
-                    <div class="radar-ring"></div>
-                    <div class="radar-core"></div>
+            <div class="overlay-backdrop">
+                <div class="scanner-box-modal">
+                    <div class="pulse-container">
+                        <div class="radar-ring"></div>
+                        <div class="radar-core"></div>
+                    </div>
+                    <div class="scan-title">Diffing Bytecode & Metadata</div>
+                    <div class="scan-sub">Scanning for exposed secrets & ABI splits...</div>
                 </div>
-                <div style="font-weight: 800; font-size: 16px; color: #21005D;">Diffing Bytecode, SDKs & Metadata</div>
-                <div style="font-size: 13px; color: #49454F; margin-top: 4px;">Scanning for exposed secrets, ABI splits, locale diffs...</div>
             </div>
             """, unsafe_allow_html=True)
 
@@ -1108,7 +1235,6 @@ else:
             added_deep_links = list(new_data["deep_links"] - old_data["deep_links"])
             added_endpoints = list(new_data["endpoints"] - old_data["endpoints"])
 
-            # SMART PRE-FILTERING FOR UI STRINGS
             raw_ui = list(new_data["ui_strings"] - old_data["ui_strings"])
             ui_keywords = ["new", "beta", "experimental", "feature", "dialog"]
             added_ui_strings = [s for s in raw_ui if len(s) > 15 or any(k in s.lower() for k in ui_keywords)]
@@ -1129,37 +1255,54 @@ else:
             new_size_mb = round(new_data["total_size"] / (1024 * 1024), 2)
             size_diff_mb = round(new_size_mb - old_size_mb, 2)
 
-            # SMART PRE-FILTERING FOR FEATURE FLAGS
-            combined_diffs = added_native[:200] + added_configs[:200] + added_general[:200] + added_annotations[:100] + added_jni[:100]
+            combined_diffs = added_native[:250] + added_configs[:250] + added_general[:250] + added_annotations[:100] + added_jni[:100]
             raw_toggles = list(set([t for t in combined_diffs if any(k in t.lower() for k in ['flag', 'enable', 'config', 'opt', 'toggle', 'experiment', 'beta'])]))
+            
+            old_years = ["2020", "2021", "2022", "2023", "2024"]
             noise_prefixes = ["androidx", "com.google.android.gms", "kotlin", "java"]
-            feature_toggles = [t for t in raw_toggles if not any(t.lower().startswith(n) for n in noise_prefixes)]
+            
+            feature_toggles = []
+            for t in raw_toggles:
+                t_low = t.lower()
+                if any(t_low.startswith(n) for n in noise_prefixes): continue
+                if any(y in t_low for y in old_years): continue
+                feature_toggles.append(t)
+
+            feature_toggles.sort(key=lambda x: (not ("2026" in x or "2025" in x), x))
 
             client = Groq(api_key=st.secrets["GROQ_API_KEY"])
 
             if st.session_state.scan_mode == "hunter":
                 scanner_placeholder.markdown("""
-                <div class="scanner-box">
-                    <div class="pulse-container">
-                        <div class="radar-ring" style="border-color: #D0BCFF;"></div>
-                        <div class="radar-core" style="background: #D0BCFF;"></div>
+                <div class="overlay-backdrop">
+                    <div class="scanner-box-modal">
+                        <div class="pulse-container">
+                            <div class="radar-ring"></div>
+                            <div class="radar-core"></div>
+                        </div>
+                        <div class="scan-title">Hunting Unreleased Features</div>
+                        <div class="scan-sub">Correlating XML layouts, UI text, and booleans...</div>
                     </div>
-                    <div style="font-weight: 800; font-size: 16px; color: #21005D;">Hunting Unreleased Features</div>
-                    <div style="font-size: 13px; color: #49454F; margin-top: 4px;">Correlating XML layouts, UI text, and booleans...</div>
                 </div>
                 """, unsafe_allow_html=True)
 
                 hunter_summary = f"""
+                TARGET APP PACKAGE NAME: {st.session_state.target_pkg}
+                NEW ACTIVITIES: {added_activities[:100]}
+                NEW DEEP LINKS: {added_deep_links[:100]}
                 NEW XML LAYOUTS: {added_layouts[:150]}
                 NEW UI TEXT: {added_ui_strings[:200]}
-                NEW FEATURE FLAGS: {feature_toggles[:200]}
+                FRESH FEATURE FLAGS: {feature_toggles[:120]}
                 """
 
                 prompt = f"""
                 You are an investigative mobile app software journalist finding hidden features in an APK diff.
-                CRITICAL: Ignore standard Android framework code, existing UI strings, or minor translation updates. Focus STRICTLY on novel, distinctive feature flags, unreleased layout XMLs, and cohesive new workflow strings. If a feature does not have matching evidence across flags and layouts, do not include it.
-                Correlate the provided layouts, UI text, and feature flags to deduce unreleased features. Extract up to 8 distinct unreleased features if supported by evidence.
-                Do NOT include unescaped raw quotes inside JSON values.
+                CRITICAL INSTRUCTIONS:
+                1. The user DOES NOT HAVE ROOT ACCESS. Ignore internal boolean flags.
+                2. Focus STRICTLY on finding new Exported Activities and Deep Links/Schemes that correlate with the new layouts and UI text.
+                3. PRIORITIZE recent experiment names and current-year date flags.
+                4. For Activity commands, specify the full activity path name using the target package string '{st.session_state.target_pkg}'.
+                Extract up to 8 distinct unreleased features.
                 Respond ONLY in valid JSON format with no markdown wrappers or backticks.
 
                 JSON Schema required:
@@ -1167,9 +1310,9 @@ else:
                   "summary": "3-4 concise narrative sentences summarizing the overall direction of the unreleased features found.",
                   "features": [
                     {{
-                      "name": "Feature Name (e.g. Redact Tool)",
-                      "evidence": "Briefly state the flag, string, and layout that prove this.",
-                      "activation": "adb shell dumpsys package | grep -i feature_flag_name"
+                      "name": "Feature Name (e.g. New Voice Settings)",
+                      "evidence": "Briefly state the full activity, deep link, and layout that prove this.",
+                      "activation": "adb shell am start -n {st.session_state.target_pkg}/FULL_CLASS_NAME"
                     }}
                   ]
                 }}
@@ -1196,19 +1339,19 @@ else:
                     st.error(f"Analysis error: {e}")
 
             else:
-                # STANDARD MODE
                 scanner_placeholder.markdown("""
-                <div class="scanner-box">
-                    <div class="pulse-container">
-                        <div class="radar-ring"></div>
-                        <div class="radar-core"></div>
+                <div class="overlay-backdrop">
+                    <div class="scanner-box-modal">
+                        <div class="pulse-container">
+                            <div class="radar-ring"></div>
+                            <div class="radar-core"></div>
+                        </div>
+                        <div class="scan-title">Synthesizing Report</div>
+                        <div class="scan-sub">Generating broad technical AI overview...</div>
                     </div>
-                    <div style="font-weight: 800; font-size: 16px; color: #21005D;">Synthesizing AI Teardown Report</div>
-                    <div style="font-size: 13px; color: #49454F; margin-top: 4px;">Generating broad technical overview...</div>
                 </div>
                 """, unsafe_allow_html=True)
 
-                # Trimmed arrays for Standard Scan to fit within the 6,000 TPM limit of the Groq free tier
                 diff_summary = f"""
                 SIZE CHANGE: {size_diff_mb} MB
                 FEATURE FLAGS: {feature_toggles[:60]}
@@ -1226,10 +1369,10 @@ else:
                 """
 
                 prompt = f"""
-                You are a lead mobile software investigator analyzing an APK diff.
-                CRITICAL: Ignore standard Android framework code, existing UI strings, or minor translation updates. Focus STRICTLY on novel, distinctive feature flags, unreleased layout XMLs, and cohesive new workflow strings. If a feature does not have matching evidence across flags and layouts, do not include it.
+                You are a lead mobile software analyst reviewing an APK diff.
+                CRITICAL: Ignore standard Android framework code. Focus STRICTLY on novel feature flags, unreleased layouts, and new workflow strings. 
                 Analyze this diff data and respond ONLY in valid JSON format with no markdown wrappers or backticks.
-                Do NOT label standard WebRTC audio/video features or bitrate config keys as security risks. Say 'No security risks detected.' unless actual exposed secrets, unencrypted endpoints, or risky permissions exist.
+                Do NOT invent security vulnerabilities. Instead, provide a factual summary of the app's ecosystem, such as new third-party trackers, network endpoints, or permission changes.
                 Do NOT include unescaped raw quotes inside JSON values.
 
                 JSON Schema required:
@@ -1237,7 +1380,7 @@ else:
                   "summary": "3-4 concise, highly specific narrative sentences explaining the technical changes and intent.",
                   "blueprints": "Concrete feature predictions based strictly on the new flags/classes.",
                   "command": "An adb terminal grep command, e.g.: adb shell dumpsys package | grep -i feature_name",
-                  "security": "Assessment of newly added SDKs, exposed secrets, or packaging risks."
+                  "ecosystem": "A factual summary of the app's data footprint, detailing newly added SDKs, tracker footprint, network endpoints, and permission shifts."
                 }}
 
                 RAW DATA:
@@ -1245,7 +1388,6 @@ else:
                 """
 
                 try:
-                    # Switch to latest supported 70B model to bypass rate limits
                     completion = client.chat.completions.create(
                         model="llama-3.3-70b-versatile", 
                         messages=[{"role": "user", "content": prompt}],
