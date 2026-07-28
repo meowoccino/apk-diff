@@ -2,9 +2,7 @@ import streamlit as st
 import zipfile
 import io
 import re
-import sqlite3
 import tempfile
-import ctypes
 import os
 import subprocess
 import urllib.request
@@ -371,19 +369,6 @@ def categorize_file(lower_name):
     if lower_name.startswith("meta-inf/"): return "Signing / Metadata"
     return "Other"
 
-def scan_for_secrets(token_sets):
-    findings = set()
-    pool = []
-    for s in token_sets: pool.extend(list(s)[:4000])
-    for pattern_name, pattern in SECRET_PATTERNS.items():
-        for tok in pool:
-            m = re.search(pattern, tok)
-            if m:
-                findings.add(f"{pattern_name} → {m.group(0)[:44]}")
-                break
-        if len(findings) > 25: break
-    return findings
-
 def process_zip_archive(zip_obj, details):
     for name in zip_obj.namelist():
         info = zip_obj.getinfo(name)
@@ -511,7 +496,9 @@ if st.session_state.hunter_data:
     st.markdown("<div class='timeline'>", unsafe_allow_html=True)
 
     # TIMELINE NODE 1: SOURCE & DOWNLOAD
-    st.markdown("""
+    pkg_str = sanitize(st.session_state.target_pkg)
+    size_mb = (new_data['total_size'] - old_data['total_size']) / (1024*1024)
+    st.markdown(f"""
     <div class="node">
         <div class="node-icon">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width:14px;height:14px;"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="7 10 12 15 17 10"></polyline><line x1="12" y1="15" x2="12" y2="3"></line></svg>
@@ -519,12 +506,12 @@ if st.session_state.hunter_data:
         <div class="timeline-card">
             <div class="node-title">Package Baseline & Target</div>
             <div class="chip-row">
-                <span class="chip chip-ok">Target: <b>{}</b></span>
-                <span class="chip">Size Change: <b>{:+.2f} MB</b></span>
+                <span class="chip chip-ok">Target: <b>{pkg_str}</b></span>
+                <span class="chip">Size Change: <b>{size_mb:+.2f} MB</b></span>
             </div>
         </div>
     </div>
-    """.format(sanitize(st.session_state.target_pkg), (new_data['total_size'] - old_data['total_size']) / (1024*1024)), unsafe_allow_html=True)
+    """, unsafe_allow_html=True)
 
     # TIMELINE NODE 2: SDK ECOSYSTEM
     new_sdks = new_data["third_party_sdks"] - old_data["third_party_sdks"]
@@ -536,7 +523,7 @@ if st.session_state.hunter_data:
         <div class="timeline-card">
             <div class="node-title">SDK Ecosystem & Shifts</div>
             <div class="chip-row">
-    """.format(), unsafe_allow_html=True)
+    """, unsafe_allow_html=True)
     if new_sdks:
         for sdk in sorted(new_sdks): st.markdown(f'<span class="chip chip-ok">+ {sanitize(sdk)}</span>', unsafe_allow_html=True)
     else:
@@ -601,15 +588,16 @@ if st.session_state.hunter_data:
     st.markdown("</div></div>", unsafe_allow_html=True)
 
     # TIMELINE NODE 6: AI INTEL & BLUEPRINTS
-    st.markdown("""
+    ai_summary_str = sanitize(hunter_data.get("summary", ""))
+    st.markdown(f"""
     <div class="node">
         <div class="node-icon ai">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width:14px;height:14px;"><path d="M12 2v4M12 18v4M4.93 4.93l2.83 2.83M16.24 16.24l2.83 2.83M2 12h4M18 12h4M4.93 19.07l2.83-2.83M16.24 7.76l2.83-2.83"/></svg>
         </div>
         <div class="timeline-card" style="border-left: 4px solid #2563EB;">
             <div class="node-title">AI Feature Intelligence</div>
-            <p style="font-size: 13px; margin-bottom: 12px;">{}</p>
-    """.format(sanitize(hunter_data.get("summary", ""))), unsafe_allow_html=True)
+            <p style="font-size: 13px; margin-bottom: 12px;">{ai_summary_str}</p>
+    """, unsafe_allow_html=True)
 
     has_adb = is_local_adb_available()
     for idx, feat in enumerate(hunter_data.get("features", [])):
