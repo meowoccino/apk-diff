@@ -25,17 +25,9 @@ def sanitize(text):
 def clean_json_response(raw_str):
     cleaned = re.sub(r"^```json\s*", "", raw_str, flags=re.MULTILINE)
     cleaned = re.sub(r"^```\s*", "", cleaned, flags=re.MULTILINE)
-    cleaned = cleaned.strip()
-    return cleaned
-
-def format_title_case(token):
-    if not token:
-        return ""
-    words = str(token).replace("_", " ").split()
-    return " ".join(w.capitalize() for w in words)
+    return cleaned.strip()
 
 def is_valid_feature_flag(s):
-    """Tightened feature flag validator: eliminates crypto errors, Tink crash logs, and spaced sentences."""
     if not s or " " in s or len(s) > 80:
         return False
     s_low = s.lower()
@@ -65,33 +57,6 @@ def fix_adb_command_syntax(cmd, target_pkg):
             else:
                 clean = f"{prefix} -n {target_pkg}/{intent_target}"
     return clean
-
-def safe_execute_adb(cmd_str):
-    cmd = cmd_str.strip()
-    if cmd.startswith("$"):
-        cmd = cmd[1:].strip()
-    if cmd.startswith("adb "):
-        cmd = cmd[4:].strip()
-        
-    try:
-        tokens = shlex.split(cmd)
-    except Exception as e:
-        return False, f"Invalid command syntax: {e}"
-        
-    if not tokens or tokens[0] not in ["am", "pm", "dumpsys"]:
-        return False, "Security restriction: Only 'am', 'pm', and 'dumpsys' commands are allowed."
-        
-    full_args = ["adb", "shell"] + tokens
-    try:
-        res = subprocess.run(full_args, capture_output=True, text=True, timeout=12)
-        if res.returncode == 0:
-            return True, res.stdout.strip() or "Command executed successfully."
-        else:
-            return False, res.stderr.strip() or f"Returned non-zero status code: {res.returncode}"
-    except subprocess.TimeoutExpired:
-        return False, "Command execution timed out."
-    except Exception as e:
-        return False, f"Execution failed: {e}"
 
 def is_local_adb_available():
     if not shutil.which("adb"):
@@ -132,7 +97,6 @@ st.markdown("""
         font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
     }
 
-    /* Timeline Structure */
     .timeline { position: relative; padding-left: 28px; margin-top: 16px; }
     .timeline::before { content: ''; position: absolute; top: 8px; left: 11px; height: calc(100% - 16px); width: 2px; background: #CBD5E1; }
     
@@ -145,12 +109,10 @@ st.markdown("""
     }
     .node-icon.ai { background: #2563EB; color: #FFFFFF; }
 
-    /* Timeline Cards */
     .timeline-card { background: #FFFFFF; border: 1px solid #E2E8F0; border-radius: 12px; padding: 14px; box-shadow: 0 1px 3px rgba(0,0,0,0.04); }
     .node-title { font-size: 15px; font-weight: 800; color: #1E293B; margin-bottom: 8px; display: flex; align-items: center; gap: 6px; }
     .node-sub { font-size: 11px; font-weight: 700; color: #64748B; text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 6px; }
 
-    /* Inputs & UI Cards */
     div[data-testid="stFileUploader"], div[data-testid="stTextInput"] {
         background-color: #FFFFFF !important;
         border: 1px solid #E2E8F0 !important;
@@ -185,7 +147,6 @@ st.markdown("""
         word-break: break-all; margin-top: 4px; margin-bottom: 4px;
     }
     .mono-add { color: #4ADE80; }
-    .mono-rem { color: #F87171; text-decoration: line-through; }
     .mono-guess { color: #94A3B8; font-style: italic; }
 
     [data-testid="stExpander"] {
@@ -197,7 +158,6 @@ st.markdown("""
 </style>
 """, unsafe_allow_html=True)
 
-# HEADER WITH VECTOR SVG
 st.markdown("""
 <div style="display: flex; align-items: center; gap: 12px; margin-top: 6px; margin-bottom: 12px;">
     <div style="background: #2563EB; padding: 8px; border-radius: 10px; color: white; display: flex; align-items: center; justify-content: center;">
@@ -305,16 +265,6 @@ SDK_SIGNATURES = {
     "Retrofit": ["retrofit2"],
     "OkHttp": ["okhttp3"],
     "Room": ["androidx/room"],
-}
-
-SECRET_PATTERNS = {
-    "Google API Key": r'AIza[0-9A-Za-z\-_]{35}',
-    "AWS Access Key ID": r'AKIA[0-9A-Z]{16}',
-    "Stripe Live Secret Key": r'sk_live_[0-9a-zA-Z]{20,}',
-    "Stripe Publishable Key": r'pk_live_[0-9a-zA-Z]{20,}',
-    "Slack Token": r'xox[baprs]-[0-9A-Za-z\-]{10,}',
-    "Firebase Realtime DB URL": r'https://[a-zA-Z0-9\-]+\.firebaseio\.com',
-    "JWT-looking Token": r'eyJ[A-Za-z0-9_\-]{10,}\.[A-Za-z0-9_\-]{10,}\.[A-Za-z0-9_\-]{10,}',
 }
 
 def is_framework_noise(token):
@@ -495,7 +445,7 @@ if st.session_state.hunter_data:
 
     st.markdown("<div class='timeline'>", unsafe_allow_html=True)
 
-    # TIMELINE NODE 1: SOURCE & DOWNLOAD
+    # NODE 1: TARGET BASELINE
     pkg_str = sanitize(st.session_state.target_pkg)
     size_mb = (new_data['total_size'] - old_data['total_size']) / (1024*1024)
     st.markdown(f"""
@@ -513,7 +463,7 @@ if st.session_state.hunter_data:
     </div>
     """, unsafe_allow_html=True)
 
-    # TIMELINE NODE 2: SDK ECOSYSTEM
+    # NODE 2: SDK ECOSYSTEM
     new_sdks = new_data["third_party_sdks"] - old_data["third_party_sdks"]
     st.markdown("""
     <div class="node">
@@ -530,7 +480,7 @@ if st.session_state.hunter_data:
         st.markdown('<span class="chip">No new third-party SDKs added</span>', unsafe_allow_html=True)
     st.markdown("</div></div></div>", unsafe_allow_html=True)
 
-    # TIMELINE NODE 3: GRAPHIC ASSET DIFFS
+    # NODE 3: ASSET DIFFS
     if st.session_state.added_image_keys or st.session_state.modified_image_keys:
         st.markdown("""
         <div class="node">
@@ -548,7 +498,7 @@ if st.session_state.hunter_data:
                 with c2: st.image(Image.open(io.BytesIO(st.session_state.new_data_images[img_key])), caption=f"NEW: {img_key[:12]}", width=60)
         st.markdown("</div></div>", unsafe_allow_html=True)
 
-    # TIMELINE NODE 4: CODEBASE & DEOBFUSCATION
+    # NODE 4: CODEBASE & DEOBFUSCATION
     st.markdown("""
     <div class="node">
         <div class="node-icon">
@@ -563,7 +513,7 @@ if st.session_state.hunter_data:
         for g in r8_guesses[:5]: st.markdown(f'<div class="mono-block mono-guess">{sanitize(g)}</div>', unsafe_allow_html=True)
     st.markdown("</div></div>", unsafe_allow_html=True)
 
-    # TIMELINE NODE 5: CATEGORIZED STRINGS & SEARCH
+    # NODE 5: STRINGS & SEARCH
     added_ui = sorted(new_data["ui_strings"] - old_data["ui_strings"])
     st.markdown("""
     <div class="node">
@@ -587,7 +537,7 @@ if st.session_state.hunter_data:
         for s in filtered_ui[:100]: st.markdown(f'<div class="mono-block mono-add">+ {sanitize(s)}</div>', unsafe_allow_html=True)
     st.markdown("</div></div>", unsafe_allow_html=True)
 
-    # TIMELINE NODE 6: AI INTEL & BLUEPRINTS
+    # NODE 6: AI INTEL & BLUEPRINTS
     ai_summary_str = sanitize(hunter_data.get("summary", ""))
     st.markdown(f"""
     <div class="node">
@@ -599,7 +549,6 @@ if st.session_state.hunter_data:
             <p style="font-size: 13px; margin-bottom: 12px;">{ai_summary_str}</p>
     """, unsafe_allow_html=True)
 
-    has_adb = is_local_adb_available()
     for idx, feat in enumerate(hunter_data.get("features", [])):
         name = sanitize(feat.get("name", "Feature"))
         evidence = sanitize(feat.get("evidence", ""))
