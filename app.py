@@ -600,13 +600,29 @@ def check_xor_obfuscation(raw_bytes):
 
 def extract_strings_from_bytes(raw_bytes):
     strings = set()
-    matches = re.findall(rb'[\x20-\x7E]{5,}', raw_bytes)
-    for m in matches:
+    
+    # 1. Grab UTF-8 and standard extended ASCII (catches most text + accents)
+    utf8_matches = re.findall(rb'[\x20-\x7E\xC2-\xDF\xE0-\xEF\xF0-\xF4\x80-\xBF]{5,}', raw_bytes)
+    for m in utf8_matches:
         try:
-            decoded = m.decode('ascii', errors='ignore').strip()
-            if len(decoded) < 120 and decoded and not is_framework_noise(decoded):
+            decoded = m.decode('utf-8').strip()
+            # Filter out pure base64/hex gibberish strings that pollute the diff
+            if len(decoded) > 4 and not re.match(r'^[A-Za-z0-9+/=]{15,}$', decoded) and not is_framework_noise(decoded):
                 strings.add(decoded)
-        except Exception: pass
+        except UnicodeDecodeError:
+            pass
+            
+    # 2. Grab UTF-16 Little Endian (Android's native resources.arsc format)
+    # Looks for patterns matching text separated by null bytes
+    utf16_matches = re.findall(rb'(?:[\x20-\x7E]\x00){4,}', raw_bytes)
+    for m in utf16_matches:
+        try:
+            decoded = m.decode('utf-16le').strip()
+            if len(decoded) > 3 and not is_framework_noise(decoded):
+                strings.add(decoded)
+        except UnicodeDecodeError:
+            pass
+            
     return strings
 
 def categorize_file(lower_name):
