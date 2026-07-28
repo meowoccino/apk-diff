@@ -2,4 +2,3 @@ streamlit
 groq
 Pillow
 pyaxmlparser
-default-jre
