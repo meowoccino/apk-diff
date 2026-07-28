@@ -21,27 +21,23 @@ st.set_page_config(page_title="apk-diff", layout="centered")
 
 # ==================== UTILITY FUNCTIONS ====================
 def sanitize(text):
-    """Prevents Streamlit from rendering $ as LaTeX math or hiding HTML tags."""
     if not text:
         return ""
     return html.escape(str(text)).replace("$", r"\$")
 
 def clean_json_response(raw_str):
-    """Clean markdown wrappers and escaped strings to prevent JSON parser crashes."""
     cleaned = re.sub(r"^```json\s*", "", raw_str, flags=re.MULTILINE)
     cleaned = re.sub(r"^```\s*", "", cleaned, flags=re.MULTILINE)
     cleaned = cleaned.strip()
     return cleaned
 
 def format_title_case(token):
-    """Format raw tokens (e.g., 'query stereo' -> 'Query Stereo')."""
     if not token:
         return ""
     words = str(token).replace("_", " ").split()
     return " ".join(w.capitalize() for w in words)
 
 def fix_adb_command_syntax(cmd, target_pkg):
-    """Automatically repairs missing slashes, stray $ signs, and AI package placeholders."""
     if not target_pkg or target_pkg == "com.unknown.app":
         target_pkg = "com.android.vending"
         
@@ -64,7 +60,6 @@ def fix_adb_command_syntax(cmd, target_pkg):
     return clean
 
 def safe_execute_adb(cmd_str):
-    """Safely executes ADB commands without shell=True to prevent command injection."""
     cmd = cmd_str.strip()
     if cmd.startswith("$"):
         cmd = cmd[1:].strip()
@@ -93,7 +88,6 @@ def safe_execute_adb(cmd_str):
         return False, f"Execution failed: {e}"
 
 def is_local_adb_available():
-    """Detects if running locally in Termux with an active ADB connection."""
     if not shutil.which("adb"):
         return False
     try:
@@ -103,7 +97,7 @@ def is_local_adb_available():
     except Exception:
         return False
 
-# ==================== MATERIAL DESIGN 3 — NATIVE MOBILE STYLING ====================
+# ==================== STYLING & SVG ICONS ====================
 st.markdown("""
 <style>
     html, body, [data-testid="stAppViewContainer"], .main, .block-container {
@@ -119,7 +113,6 @@ st.markdown("""
         max-width: 480px !important;
     }
 
-    /* Suppress default Streamlit web header/footer elements */
     [data-testid="stHeader"],
     [data-testid="stToolbar"],
     [data-testid="stDecoration"],
@@ -142,7 +135,6 @@ st.markdown("""
         font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Text', 'Roboto', sans-serif;
     }
 
-    /* ---- Native Header Card ---- */
     .hero-card {
         background: #FFFFFF;
         border: 1px solid #E7E0EC;
@@ -173,14 +165,12 @@ st.markdown("""
         padding: 4px 10px; border-radius: 100px;
     }
 
-    /* ---- Section Labels ---- */
     .section-label {
         font-size: 11px; font-weight: 700; letter-spacing: 0.05em;
         color: #6750A4; text-transform: uppercase;
         margin: 12px 4px 8px 4px;
     }
 
-    /* ---- Native File Upload Cards & Input ---- */
     div[data-testid="stFileUploader"], div[data-testid="stTextInput"] {
         background-color: #FFFFFF !important;
         border: 1px solid #E7E0EC !important;
@@ -191,7 +181,6 @@ st.markdown("""
     }
     div[data-testid="stFileUploader"] small { display: none !important; }
 
-    /* ---- Action Buttons ---- */
     div.stButton > button {
         background: #6750A4 !important;
         color: #FFFFFF !important;
@@ -226,7 +215,6 @@ st.markdown("""
         margin-top: 0 !important;
     }
 
-    /* ---- Native Expanders ---- */
     [data-testid="stExpander"] {
         background-color: #FFFFFF !important;
         border: 1px solid #E7E0EC !important;
@@ -239,7 +227,6 @@ st.markdown("""
     [data-testid="stExpander"] summary p { font-weight: 600 !important; color: #1D1B20 !important; font-size: 14px !important; }
     [data-testid="stExpander"] summary:hover { background-color: #F8F9FA !important; }
 
-    /* ---- Centered Blurred Overlay Modal ---- */
     .overlay-backdrop {
         position: fixed;
         top: 0; left: 0;
@@ -290,7 +277,6 @@ st.markdown("""
     @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
     @keyframes pulse-core { 0% { transform: scale(0.8); opacity: 0.7; } 50% { transform: scale(1.15); opacity: 1; } 100% { transform: scale(0.8); opacity: 0.7; } }
 
-    /* ---- Fact Cards ---- */
     .tile-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-bottom: 12px; }
     .tile {
         background: #FFFFFF;
@@ -311,7 +297,6 @@ st.markdown("""
     .chip-warn { background: #FFEAEE; color: #410E0B; }
     .chip-ok { background: #E6F4EA; color: #0B3B12; }
 
-    /* ---- AI Card Styling ---- */
     .report-card {
         border-radius: 16px;
         padding: 16px;
@@ -397,10 +382,15 @@ st.markdown("""
         font-size: 11px; word-break: break-all;
         margin-top: 4px; margin-bottom: 4px;
     }
+    .side-by-side-img {
+        display: flex; gap: 8px; align-items: center; justify-content: center; margin-bottom: 12px;
+    }
+    .side-by-side-img div {
+        text-align: center; font-size: 10px; color: #6F6A76; font-weight: 600;
+    }
 </style>
 """, unsafe_allow_html=True)
 
-# ALWAYS RENDER HEADER
 st.markdown("""
 <div class="hero-card">
     <div class="hero-title-row">
@@ -415,12 +405,12 @@ st.markdown("""
         </div>
         <div class="hero-title">apk-diff</div>
     </div>
-    <div class="hero-sub">Diffs two package builds and surfaces JNI exports, GraphQL/ProtoBuf schemas, DEX class changes, databases, split bundles, third-party SDKs, exposed secrets, architectures, locales, and signing metadata.</div>
+    <div class="hero-sub">Diffs package builds and surfaces exported components, layouts, binary SDKs, exposed secrets, architectures, locales, and modified graphics.</div>
     <div class="hero-pillrow">
         <span class="hero-pill">JNI / Native</span>
         <span class="hero-pill">SDK Ecosystem</span>
         <span class="hero-pill">Secrets Scan</span>
-        <span class="hero-pill">Locales / ABI</span>
+        <span class="hero-pill">Deep Links</span>
     </div>
 </div>
 """, unsafe_allow_html=True)
@@ -469,11 +459,12 @@ for key, default in [
     ("hunter_data", None),
     ("scan_mode", None),
     ("added_image_keys", []),
+    ("modified_image_keys", []),
+    ("old_data_images", {}),
     ("new_data_images", {}),
     ("quickfacts", None),
     ("jadx_ready", False),
     ("jadx_zip_bytes", None),
-    ("target_pkg", "com.android.vending")
 ]:
     if key not in st.session_state:
         st.session_state[key] = default
@@ -536,7 +527,6 @@ UI_TEXT_SKIP_SUBSTR = (
 )
 
 def clean_ui_string(s):
-    """Strips leading Markdown/Resource junk like ## or #$ or @ symbols."""
     if not s:
         return ""
     cleaned = re.sub(r'^[#$@%!&\*\-]+', '', s).strip()
@@ -601,19 +591,17 @@ def check_xor_obfuscation(raw_bytes):
 def extract_strings_from_bytes(raw_bytes):
     strings = set()
     
-    # 1. Grab UTF-8 and standard extended ASCII (catches most text + accents)
+    # UTF-8 and extended ASCII
     utf8_matches = re.findall(rb'[\x20-\x7E\xC2-\xDF\xE0-\xEF\xF0-\xF4\x80-\xBF]{5,}', raw_bytes)
     for m in utf8_matches:
         try:
             decoded = m.decode('utf-8').strip()
-            # Filter out pure base64/hex gibberish strings that pollute the diff
             if len(decoded) > 4 and not re.match(r'^[A-Za-z0-9+/=]{15,}$', decoded) and not is_framework_noise(decoded):
                 strings.add(decoded)
         except UnicodeDecodeError:
             pass
             
-    # 2. Grab UTF-16 Little Endian (Android's native resources.arsc format)
-    # Looks for patterns matching text separated by null bytes
+    # UTF-16 Little Endian (Android native ARSC)
     utf16_matches = re.findall(rb'(?:[\x20-\x7E]\x00){4,}', raw_bytes)
     for m in utf16_matches:
         try:
@@ -814,7 +802,36 @@ def inspect_entire_bundle(file_bytes):
 
     return details
 
-def render_quickfacts(old_data, new_data, added_image_keys, new_data_images):
+def generate_markdown_report(report_data, hunter_data):
+    lines = ["# APK Differential AI Report\n"]
+    if report_data:
+        lines.append("## Executive Summary")
+        lines.append(f"{report_data.get('summary', '')}\n")
+        lines.append("## Ecosystem Changes")
+        lines.append(f"{report_data.get('ecosystem', '')}\n")
+        lines.append("## Unreleased Feature Blueprints")
+        bps = report_data.get("blueprints", "")
+        if isinstance(bps, list):
+            for bp in bps:
+                if isinstance(bp, dict):
+                    lines.append(f"- **{bp.get('feature', 'Feature')}**: {bp.get('prediction', '')}")
+                else:
+                    lines.append(f"- {bp}")
+        else:
+            lines.append(str(bps))
+        lines.append(f"\n### Suggested Terminal Probe\n```bash\n{report_data.get('command', '')}\n```\n")
+        
+    if hunter_data:
+        lines.append("## Deep Intelligence Features")
+        lines.append(f"{hunter_data.get('summary', '')}\n")
+        for f in hunter_data.get("features", []):
+            lines.append(f"### {f.get('name', 'Unknown')}")
+            lines.append(f"**Evidence:** {f.get('evidence', '')}")
+            lines.append(f"**Activation Context:**\n```bash\n{f.get('activation', '')}\n```\n")
+            
+    return "\n".join(lines)
+
+def render_quickfacts(old_data, new_data, added_image_keys, modified_image_keys, old_data_images, new_data_images):
     old_size_mb = round(old_data["total_size"] / (1024 * 1024), 2)
     new_size_mb = round(new_data["total_size"] / (1024 * 1024), 2)
     size_diff = round(new_size_mb - old_size_mb, 2)
@@ -843,7 +860,6 @@ def render_quickfacts(old_data, new_data, added_image_keys, new_data_images):
     st.markdown(tiles, unsafe_allow_html=True)
 
     chips = '<div class="chip-row">'
-    
     if not new_archs and not new_locales and not new_splits:
         chips += '<span class="chip">No new architectures / locales / splits</span>'
     else:
@@ -855,7 +871,6 @@ def render_quickfacts(old_data, new_data, added_image_keys, new_data_images):
         chips += '<span class="chip chip-warn">Possible exposed secrets found</span>'
     else:
         chips += '<span class="chip chip-ok">No hardcoded secrets matched</span>'
-        
     chips += '</div>'
     st.markdown(chips, unsafe_allow_html=True)
 
@@ -864,16 +879,28 @@ def render_quickfacts(old_data, new_data, added_image_keys, new_data_images):
             for s in sorted(secrets_new):
                 st.markdown(f'<div class="mono-block">{sanitize(s)}</div>', unsafe_allow_html=True)
 
-    if added_image_keys:
-        with st.expander("Newly Added Graphic Previews"):
-            img_cols = st.columns(min(len(added_image_keys[:4]), 4))
-            for idx, img_key in enumerate(added_image_keys[:4]):
-                with img_cols[idx]:
+    if added_image_keys or modified_image_keys:
+        with st.expander("Modified & Added Graphic Assets"):
+            if modified_image_keys:
+                st.markdown("**Side-by-Side Altered Files**")
+                for img_key in modified_image_keys[:3]:
+                    col1, col2 = st.columns(2)
                     try:
-                        image = Image.open(io.BytesIO(new_data_images[img_key]))
-                        st.image(image, caption=img_key[:15], width=70)
+                        with col1:
+                            st.image(Image.open(io.BytesIO(old_data_images[img_key])), caption=f"OLD: {img_key[:15]}", width=60)
+                        with col2:
+                            st.image(Image.open(io.BytesIO(new_data_images[img_key])), caption=f"NEW: {img_key[:15]}", width=60)
                     except Exception:
                         pass
+            if added_image_keys:
+                st.markdown("**Newly Added Assets**")
+                img_cols = st.columns(min(len(added_image_keys[:4]), 4))
+                for idx, img_key in enumerate(added_image_keys[:4]):
+                    with img_cols[idx]:
+                        try:
+                            st.image(Image.open(io.BytesIO(new_data_images[img_key])), caption=img_key[:15], width=60)
+                        except Exception:
+                            pass
 
     with st.expander("Third-party SDK ecosystem"):
         if new_sdks or removed_sdks or new_data["third_party_sdks"]:
@@ -894,96 +921,38 @@ def render_quickfacts(old_data, new_data, added_image_keys, new_data_images):
             mb = round(size / (1024 * 1024), 2)
             if mb > 0.01: st.markdown(f"**{sanitize(cat)}** — {mb} MB")
 
-    with st.expander("Signing & packaging metadata"):
-        sign_new = new_data["signing_info"]
-        if sign_new:
-            for s in sorted(sign_new): st.markdown(f"- {sanitize(s)}")
-        else:
-            st.markdown("_No META-INF signature files found in this archive._")
-        if new_data["architectures"]:
-            st.markdown(f"**Architectures shipped:** {', '.join(sorted(new_data['architectures']))}")
-        if new_data["locales"]:
-            st.markdown(f"**Locales included:** {len(new_data['locales'])} ({', '.join(sorted(new_data['locales'])[:15])}{'…' if len(new_data['locales']) > 15 else ''})")
-
     added_ui = sorted(new_data["ui_strings"] - old_data["ui_strings"])
     removed_ui = sorted(old_data["ui_strings"] - new_data["ui_strings"])
-    
     added_ui_clean = [s for s in added_ui if s.strip()]
     removed_ui_clean = [s for s in removed_ui if s.strip()]
 
     with st.expander(f"New UI-facing text / labels ({len(added_ui_clean)})"):
         if added_ui_clean or removed_ui_clean:
-            full_ui_export = f"=== ADDED UI TEXTS ({len(added_ui_clean)}) ===\n" + "\n".join(added_ui_clean) + f"\n\n=== REMOVED UI TEXTS ({len(removed_ui_clean)}) ===\n" + "\n".join(removed_ui_clean)
-            st.download_button(
-                label=f"Download Full UI Text Diff ({len(added_ui_clean)} new)",
-                data=full_ui_export,
-                file_name="apk_diff_ui_texts.txt",
-                mime="text/plain",
-                use_container_width=True
-            )
-
-            ui_search_query = st.text_input("Search UI Texts:", placeholder="Filter UI texts...", key="ui_search")
-
-            if ui_search_query.strip():
-                sq_ui = ui_search_query.strip().lower()
-                filtered_ui_added = [s for s in added_ui_clean if sq_ui in s.lower()]
-                filtered_ui_removed = [s for s in removed_ui_clean if sq_ui in s.lower()]
-                st.caption(f"Showing matches for '{sanitize(ui_search_query)}': {len(filtered_ui_added)} added, {len(filtered_ui_removed)} removed")
-                
-                tab_ui_add, tab_ui_rem = st.tabs([f"Added ({len(filtered_ui_added)})", f"Removed ({len(filtered_ui_removed)})"])
-                with tab_ui_add:
-                    for s in filtered_ui_added[:300]: st.markdown(f"- {sanitize(s)}")
-                with tab_ui_rem:
-                    for s in filtered_ui_removed[:300]: st.markdown(f"- ~~{sanitize(s)}~~")
-            else:
-                if added_ui_clean:
-                    for s in added_ui_clean[:250]: st.markdown(f"- {sanitize(s)}")
-                    if len(added_ui_clean) > 250: st.caption(f"…and {len(added_ui_clean) - 250} more. Download the text file above for all items.")
-                
-                if removed_ui_clean:
-                    st.markdown(f"**Removed ({len(removed_ui_clean)}):**")
-                    for s in removed_ui_clean[:100]: st.markdown(f"- ~~{sanitize(s)}~~")
-                    if len(removed_ui_clean) > 100: st.caption(f"…and {len(removed_ui_clean) - 100} more. Download the text file above for all items.")
+            tab_ui_add, tab_ui_rem = st.tabs([f"Added ({len(added_ui_clean)})", f"Removed ({len(removed_ui_clean)})"])
+            with tab_ui_add:
+                for s in added_ui_clean[:200]: st.markdown(f"- {sanitize(s)}")
+                if len(added_ui_clean) > 200: st.caption(f"…and {len(added_ui_clean) - 200} more.")
+            with tab_ui_rem:
+                for s in removed_ui_clean[:100]: st.markdown(f"- ~~{sanitize(s)}~~")
         else:
             st.markdown("_No new UI copy detected between builds._")
 
-    with st.expander("Raw string diff — unfiltered (no AI)"):
+    with st.expander("Categorized String Diff — Unfiltered"):
         raw_added = sorted((new_data["all_strings"] | new_data["config_strings"]) - (old_data["all_strings"] | old_data["config_strings"]))
-        raw_removed = sorted((old_data["all_strings"] | old_data["config_strings"]) - (new_data["all_strings"] | new_data["config_strings"]))
-        
         raw_added_clean = [s for s in raw_added if s.strip()]
-        raw_removed_clean = [s for s in raw_removed if s.strip()]
 
-        full_text_export = f"=== ADDED STRINGS ({len(raw_added_clean)}) ===\n" + "\n".join(raw_added_clean) + f"\n\n=== REMOVED STRINGS ({len(raw_removed_clean)}) ===\n" + "\n".join(raw_removed_clean)
-        st.download_button(
-            label=f"Download Full Raw String Diff ({len(raw_added_clean) + len(raw_removed_clean)} items)",
-            data=full_text_export,
-            file_name="apk_diff_raw_strings.txt",
-            mime="text/plain",
-            use_container_width=True
-        )
+        network_urls = [s for s in raw_added_clean if s.startswith("http://") or s.startswith("https://")]
+        flags_config = [s for s in raw_added_clean if any(k in s.lower() for k in ['flag', 'enable', 'config', 'opt', 'toggle', 'experiment'])]
+        other_raw = [s for s in raw_added_clean if s not in network_urls and s not in flags_config]
 
-        search_query = st.text_input("Search Raw Strings:", placeholder="Filter strings...", key="str_search")
-
-        if search_query.strip():
-            sq = search_query.strip().lower()
-            filtered_added = [s for s in raw_added_clean if sq in s.lower()]
-            filtered_removed = [s for s in raw_removed_clean if sq in s.lower()]
-            st.caption(f"Showing matches for '{sanitize(search_query)}': {len(filtered_added)} added, {len(filtered_removed)} removed")
-            
-            tab_add, tab_rem = st.tabs([f"Added ({len(filtered_added)})", f"Removed ({len(filtered_removed)})"])
-            with tab_add:
-                for s in filtered_added[:300]: st.markdown(f'<div class="mono-block">{sanitize(s)}</div>', unsafe_allow_html=True)
-            with tab_rem:
-                for s in filtered_removed[:300]: st.markdown(f'<div class="mono-block">{sanitize(s)}</div>', unsafe_allow_html=True)
-        else:
-            tab_add, tab_rem = st.tabs([f"Added ({len(raw_added_clean)})", f"Removed ({len(raw_removed_clean)})"])
-            with tab_add:
-                for s in raw_added_clean[:250]: st.markdown(f'<div class="mono-block">{sanitize(s)}</div>', unsafe_allow_html=True)
-                if len(raw_added_clean) > 250: st.caption(f"…and {len(raw_added_clean) - 250} more. Download the text file above for all items.")
-            with tab_rem:
-                for s in raw_removed_clean[:250]: st.markdown(f'<div class="mono-block">{sanitize(s)}</div>', unsafe_allow_html=True)
-                if len(raw_removed_clean) > 250: st.caption(f"…and {len(raw_removed_clean) - 250} more. Download the text file above for all items.")
+        t1, t2, t3 = st.tabs([f"Network URLs ({len(network_urls)})", f"Feature Flags ({len(flags_config)})", f"Other Assets ({len(other_raw)})"])
+        
+        with t1:
+            for s in network_urls[:150]: st.markdown(f'<div class="mono-block">{sanitize(s)}</div>', unsafe_allow_html=True)
+        with t2:
+            for s in flags_config[:150]: st.markdown(f'<div class="mono-block">{sanitize(s)}</div>', unsafe_allow_html=True)
+        with t3:
+            for s in other_raw[:150]: st.markdown(f'<div class="mono-block">{sanitize(s)}</div>', unsafe_allow_html=True)
 
 def format_html_list(items):
     if not items:
@@ -1145,7 +1114,7 @@ def render_hunter_dashboard(hunter_data):
                 st.markdown(f'<div class="hunter-cmd">{sanitize(display_cmd)}</div>', unsafe_allow_html=True)
             with col2:
                 st.markdown('<div class="run-btn">', unsafe_allow_html=True)
-                if st.button("▶ Run", key=f"run_btn_{idx}", use_container_width=True):
+                if st.button("Run Command", key=f"run_btn_{idx}", use_container_width=True):
                     success, output = safe_execute_adb(clean_cmd)
                     if success:
                         st.toast(f"Command fired: {display_cmd[:35]}...")
@@ -1159,9 +1128,20 @@ def render_hunter_dashboard(hunter_data):
 
 # ==================== FULLSCREEN REPORT VIEW ====================
 if st.session_state.report_data or st.session_state.hunter_data:
+    st.markdown("<div style='height: 8px;'></div>", unsafe_allow_html=True)
+    report_text = generate_markdown_report(st.session_state.report_data, st.session_state.hunter_data)
+    
+    st.download_button(
+        label="Download Leak Report (.md)",
+        data=report_text,
+        file_name=f"{st.session_state.target_pkg}_leak_report.md",
+        mime="text/markdown",
+        use_container_width=True
+    )
+
     if st.session_state.quickfacts:
         old_q, new_q = st.session_state.quickfacts
-        render_quickfacts(old_q, new_q, st.session_state.added_image_keys, st.session_state.new_data_images)
+        render_quickfacts(old_q, new_q, st.session_state.added_image_keys, st.session_state.modified_image_keys, st.session_state.old_data_images, st.session_state.new_data_images)
 
     if st.session_state.scan_mode == "hunter":
         st.markdown('<div class="section-label" style="color:#6750A4;">FEATURE INTEL REPORT</div>', unsafe_allow_html=True)
@@ -1193,11 +1173,13 @@ if st.session_state.report_data or st.session_state.hunter_data:
         st.session_state.hunter_data = None
         st.session_state.scan_mode = None
         st.session_state.added_image_keys = []
+        st.session_state.modified_image_keys = []
         st.session_state.new_data_images = {}
+        st.session_state.old_data_images = {}
         st.session_state.quickfacts = None
         st.session_state.jadx_ready = False
         st.session_state.jadx_zip_bytes = None
-        st.session_state.target_pkg = "com.android.vending"
+        st.session_state.target_pkg = ""
         st.rerun()
 
 # ==================== MAIN INPUT VIEW ====================
@@ -1205,7 +1187,7 @@ else:
     old_file = st.file_uploader("Old Version (.apk, .aab, .xapk, .apks, .apkm)", type=["apk", "aab", "xapk", "apks", "apkm", "zip"], accept_multiple_files=False)
     new_file = st.file_uploader("New Version (.apk, .aab, .xapk, .apks, .apkm)", type=["apk", "aab", "xapk", "apks", "apkm", "zip"], accept_multiple_files=False)
 
-    user_pkg_input = st.text_input("Target Package Name (Auto-detected if left blank)", value=st.session_state.target_pkg, placeholder="e.g. com.android.vending or com.discord")
+    user_pkg_input = st.text_input("Target Package Name (Auto-detected if left blank)", value="", placeholder="e.g. com.android.vending")
 
     run_standard = st.button("Standard Deep Scan", use_container_width=True)
     st.markdown('<div class="secondary-btn">', unsafe_allow_html=True)
@@ -1303,7 +1285,9 @@ else:
             ]))
 
             st.session_state.added_image_keys = [k for k in new_data["images"].keys() if k not in old_data["images"]]
+            st.session_state.modified_image_keys = [k for k in new_data["images"].keys() if k in old_data["images"] and new_data["images"][k] != old_data["images"][k]]
             st.session_state.new_data_images = new_data["images"]
+            st.session_state.old_data_images = old_data["images"]
 
             old_size_mb = round(old_data["total_size"] / (1024 * 1024), 2)
             new_size_mb = round(new_data["total_size"] / (1024 * 1024), 2)
