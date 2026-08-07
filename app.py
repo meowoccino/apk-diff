@@ -1326,11 +1326,11 @@ else:
 
                 hunter_summary = f"""
                 TARGET APP PACKAGE NAME: {st.session_state.target_pkg}
-                NEW ACTIVITIES: {added_activities[:100]}
-                NEW DEEP LINKS: {added_deep_links[:100]}
-                NEW XML LAYOUTS: {added_layouts[:150]}
-                NEW UI TEXT: {added_ui_strings[:200]}
-                FRESH FEATURE FLAGS: {feature_toggles[:120]}
+                NEW ACTIVITIES: {added_activities[:40]}
+                NEW DEEP LINKS: {added_deep_links[:40]}
+                NEW XML LAYOUTS: {added_layouts[:60]}
+                NEW UI TEXT: {added_ui_strings[:80]}
+                FRESH FEATURE FLAGS: {feature_toggles[:60]}
                 """
 
                 prompt = f"""
@@ -1362,7 +1362,7 @@ else:
 
                 try:
                     completion = client.chat.completions.create(
-                        model="llama-3.1-8b-instant",
+                        model="llama-3.3-70b-versatile",
                         messages=[{"role": "user", "content": prompt}],
                         temperature=0.0,
                         max_tokens=1500,
